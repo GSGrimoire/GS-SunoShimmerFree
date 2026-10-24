@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SunoShimmerFree</title>
+<meta name="description" content="Clear the hiss and glassy shimmer from AI-rendered music. Runs in your browser; your file is never uploaded.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="page">
+
+  <header class="masthead">
+    <h1>SunoShimmerFree</h1>
+    <p class="lede">Clears the hiss and the glassy shimmer from AI-rendered tracks. Drop in a WAV or MP3, compare by ear, and download a clean WAV. Everything runs in this browser tab, so your song is never uploaded anywhere.</p>
+  </header>
+
+  <section class="bench" aria-label="Track">
+    <div class="viewer" id="viewer">
+      <div class="drop" id="drop">
+        <p class="drop-title">Drop a song here</p>
+        <p class="drop-sub">WAV gives the best result. MP3, FLAC and most other formats your browser can play also work.</p>
+        <label class="btn btn-primary" for="file">Choose a file</label>
+        <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg" class="visually-hidden">
+      </div>
+      <div class="spectro" id="spectro" hidden>
+        <canvas id="canvasAfter" aria-hidden="true"></canvas>
+        <canvas id="canvasBefore" aria-hidden="true"></canvas>
+        <div class="playhead" id="playhead" aria-hidden="true"></div>
+        <span class="tag tag-left">Original</span>
+        <span class="tag tag-right" id="tagRight">Cleaned</span>
+        <div class="split" id="split" role="slider" tabindex="0" aria-label="Before and after divider"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="50% original"><span></span></div>
+        <div class="busy" id="busy" hidden>
+          <div class="busy-bar"><div id="busyFill"></div></div>
+          <p id="busyText" role="status" aria-live="polite">Reading the track</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="transport" id="transport" hidden>
+      <button class="btn btn-icon" id="play" aria-label="Play">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg>
+      </button>
+      <div class="timeline">
+        <label for="seek" class="visually-hidden">Playback position</label>
+        <input type="range" id="seek" min="0" max="1000" value="0" step="1">
+        <p class="time"><span id="tNow">0:00</span> / <span id="tEnd">0:00</span></p>
+      </div>
+      <fieldset class="listen" id="listen">
+        <legend class="visually-hidden">Listen to</legend>
+        <label><input type="radio" name="mode" value="original" checked><span>Original</span></label>
+        <label><input type="radio" name="mode" value="clean" disabled><span>Cleaned</span></label>
+        <label><input type="radio" name="mode" value="removed" disabled><span>Removed</span></label>
+      </fieldset>
+    </div>
+    <p class="file-line" id="fileLine" hidden></p>
+    <p class="error" id="error" role="alert" hidden></p>
+  </section>
+
+  <section class="settings" aria-labelledby="settingsHead">
+    <h2 id="settingsHead">Settings</h2>
+    <p class="hint">Switching between Original and Cleaned keeps your place in the song, so you can flip back and forth on the same bar. Listen to Removed as a check: it should sound like hiss and grit. If you can hear the melody in it, ease off. Space plays and pauses, and the keys 1, 2 and 3 switch between the three.</p>
+
+    <div class="groups">
+      <fieldset class="group">
+        <legend>Static</legend>
+        <p class="group-note">The broadband hiss that sounds like a radio between stations. The quietest moments of the song are taken as a sample of it, then subtracted everywhere.</p>
+        <label class="check"><input type="checkbox" id="denoise" checked> Remove static</label>
+        <div class="field">
+          <label for="denoiseStrength">Strength</label>
+          <input type="range" id="denoiseStrength" min="0" max="2" step="0.05" aria-describedby="h-strength">
+          <output for="denoiseStrength"></output>
+          <p class="help" id="h-strength">How hard the sampled hiss is subtracted.</p>
+        </div>
+        <div class="field">
+          <label for="maxAttenDb">Deepest cut</label>
+          <input type="range" id="maxAttenDb" min="0" max="18" step="0.5" aria-describedby="h-maxcut">
+          <output for="maxAttenDb"></output>
+          <p class="help" id="h-maxcut">The most any single frequency can be turned down.</p>
+        </div>
+        <div class="field">
+          <label for="bassHz">Leave bass alone below</label>
+          <input type="range" id="bassHz" min="50" max="1000" step="10" aria-describedby="h-bass">
+          <output for="bassHz"></output>
+          <p class="help" id="h-bass">Kick and bass under this frequency are barely touched.</p>
+        </div>
+        <div class="field">
+          <label for="quietPct">Noise sample</label>
+          <input type="range" id="quietPct" min="2" max="40" step="1" aria-describedby="h-quiet">
+          <output for="quietPct"></output>
+          <p class="help" id="h-quiet">Share of the quietest moments used as the hiss sample. Raise it if hiss remains; lower it if soft instruments go thin.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Shimmer</legend>
+        <p class="group-note">The glassy, sparkling grain on cymbals and in the air above the mix. Short, narrow flecks of sound are pulled down; sustained notes and drum hits are recognised and kept.</p>
+        <div class="field">
+          <label for="shimmer">Amount</label>
+          <input type="range" id="shimmer" min="0" max="1" step="0.05" aria-describedby="h-amount">
+          <output for="shimmer"></output>
+          <p class="help" id="h-amount">Zero turns this stage off.</p>
+        </div>
+        <div class="field">
+          <label for="shimmerMaxDb">Deepest cut</label>
+          <input type="range" id="shimmerMaxDb" min="0" max="18" step="0.5" aria-describedby="h-shcut">
+          <output for="shimmerMaxDb"></output>
+          <p class="help" id="h-shcut">The most a single fleck can be turned down.</p>
+        </div>
+        <div class="field">
+          <label for="shimmerFromHz">Starts at</label>
+          <input type="range" id="shimmerFromHz" min="1500" max="12000" step="100" aria-describedby="h-from">
+          <output for="shimmerFromHz"></output>
+          <p class="help" id="h-from">Lower it if the grain reaches down into vocals and guitars.</p>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="apply" disabled>Apply settings</button>
+      <button class="btn" id="reset">Reset to defaults</button>
+      <p class="apply-note" id="applyNote" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <section class="export" id="export" aria-labelledby="exportHead" hidden>
+    <h2 id="exportHead">Download</h2>
+    <div class="actions">
+      <button class="btn btn-primary" id="dlClean">Download cleaned WAV</button>
+      <button class="btn" id="dlRemoved">Download removed WAV</button>
+      <label class="select">Bit depth
+        <select id="bits">
+          <option value="24" selected>24-bit</option>
+          <option value="16">16-bit</option>
+          <option value="32">32-bit float</option>
+        </select>
+      </label>
+    </div>
+    <p class="hint">No EQ, compression, limiting or normalising is added, so the cleaned file is ready for your usual mastering step.</p>
+    <details class="report">
+      <summary>Processing report</summary>
+      <pre id="reportText"></pre>
+    </details>
+  </section>
+
+  <section class="notes" aria-labelledby="notesHead">
+    <h2 id="notesHead">How it works</h2>
+    <p>The song is split into thousands of overlapping slices, about 43 milliseconds each, and each slice into a thousand frequency bands. Two passes then adjust the level of each band in each slice, and the slices are stitched back together with their original timing, so nothing about the attack or the stereo image moves.</p>
+    <p>The static pass follows the adaptive spectral denoise method shared on r/SunoAI: learn what the hiss sounds like from the quietest moments, subtract it gently in the bass and more firmly up top. The shimmer pass is new. It looks for sound that is both brief and narrow, the signature of that glassy grain, and pulls it down to the level of its surroundings. A drum hit rises across every band at once and a held note lasts, so both are left as they are.</p>
+    <p>MP3 works, but the MP3 encoder has already thrown away detail and added its own artifacts, so start from the WAV download when you can. The cleaned file always comes out as WAV.</p>
+  </section>
+
+  <footer class="foot">
+    <p>A free tool from <a href="https://www.patreon.com/GSGrimoire">GS Grimoire</a>. Source and a command-line version are on <a href="https://github.com/GSGrimoire/GS-SunoShimmerFree">GitHub</a>. Engine v<span id="ver"></span>.</p>
+  </footer>
+</main>
+
+<script src="wav.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
