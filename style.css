@@ -1,4 +1,4 @@
-/* GS SunoShimmerFree page styles v2
+/* GS SunoShimmerFree page styles v3
  *
  * Colours follow Suno's published palette so the page feels familiar to
  * Suno users. Two values were adjusted for contrast: the Clean button uses
@@ -9,6 +9,8 @@
  *   v1  GS Grimoire styling (navy, gilt, IM Fell English).
  *   v2  Suno-style restyle: near-black canvas, cream and gradient pills,
  *       left settings panel, song-list versions, fixed player bar.
+ *   v3  Editor: toolbar, zoomable waveform, section inspector, removed
+ *       stretches shaded on the spectrogram.
  */
 :root {
   --canvas: #101012;
@@ -263,6 +265,46 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 .foot { margin-top: 32px; color: var(--ink-3); font-size: 13px; }
 .foot a { color: var(--ink-2); }
 
+/* ---------- spectrogram: stretches removed by edits ---------- */
+.cut-shades { position: absolute; inset: 0; pointer-events: none; }
+.cut-shades div {
+  position: absolute; top: 0; bottom: 0;
+  background: repeating-linear-gradient(135deg, rgba(16, 16, 18, 0.78) 0 6px, rgba(16, 16, 18, 0.55) 6px 12px);
+  border-left: 1px solid var(--red); border-right: 1px solid var(--red);
+}
+
+/* ---------- editor ---------- */
+.edits-note { margin: 10px 0 0; font-size: 13.5px; color: var(--orange); }
+.editor { margin-top: 8px; }
+.editor .list-head { margin-top: 32px; }
+.zoom { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--edge); border-radius: 9999px; padding: 0 2px; }
+.zoom-level { min-width: 4ch; text-align: center; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.tool {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 9999px;
+  border: 0; background: var(--raised-2); color: var(--ink); font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.tool svg { width: 16px; height: 16px; flex: none; }
+.tool:hover { background: #303036; }
+.tool:disabled { color: var(--ink-3); background: var(--raised); cursor: not-allowed; }
+.tool-gap { width: 6px; }
+
+.wave { position: relative; border-radius: var(--r-md); background: var(--raised); border: 1px solid var(--hairline); overflow: hidden; }
+.wave-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-color: var(--edge) transparent; touch-action: pan-x pinch-zoom; }
+.wave-track { position: relative; height: 168px; min-width: 100%; }
+#waveCanvas { position: sticky; left: 0; display: block; height: 168px; cursor: text; }
+.wave-playhead { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: var(--ink); pointer-events: none; transform: translateX(-1px); }
+.wave-playhead[hidden] { display: none; }
+.ed-note { margin: 8px 0 0; font-size: 13.5px; color: var(--ink-3); min-height: 1.5em; }
+.ed-note.is-warning { color: var(--orange); }
+
+.inspector { margin-top: 14px; background: var(--raised); border-radius: var(--r-md); padding: 14px 16px 10px; }
+.sec-label { margin: 0; font-weight: 500; }
+.sec-label span { color: var(--ink-3); font-weight: 400; }
+.sec-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 28px; }
+.inspector input[type="range"]::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--raised); }
+
 /* ---------- whole-page drop overlay ---------- */
 .drop-overlay {
   position: fixed; inset: 0; z-index: 30; padding: 16px; pointer-events: none;
@@ -323,6 +365,9 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
   .timeline .time { display: none; }
   .now .tile { width: 40px; height: 40px; }
   .track-key { display: none; }
+  .sec-fields { grid-template-columns: 1fr; }
+  .tool-gap { display: none; }
+  .wave-track, #waveCanvas { height: 140px; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }

@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  GS SunoShimmerFree page v2
+  GS SunoShimmerFree page v3
   Version history
     v1  First release, GS Grimoire styling: spectrogram wipe, A/B/Removed
         switch, settings below the track.
@@ -9,6 +9,9 @@
         and its versions as a song list, and a fixed player bar. Engine
         unchanged. Files can be dropped anywhere on the page, with a
         full-screen drop overlay.
+    v3  Editor: waveform with sections, select, split, cut, keep only,
+        section volume and fades, undo and redo, zoom. Playback and
+        downloads follow the edits.
 -->
 <html lang="en">
 <head>
@@ -122,6 +125,7 @@
       <div class="spectro" id="spectro">
         <canvas id="canvasAfter" aria-hidden="true"></canvas>
         <canvas id="canvasBefore" aria-hidden="true"></canvas>
+        <div class="cut-shades" id="cutShades" aria-hidden="true"></div>
         <div class="playhead" id="playhead" aria-hidden="true"></div>
         <span class="tag tag-left">Original</span>
         <span class="tag tag-right" id="tagRight">Cleaned</span>
@@ -176,7 +180,68 @@
           </button>
         </div>
       </fieldset>
+      <p class="edits-note" id="editsNote" hidden>Playback and downloads include your edits.</p>
       <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1, 2 and 3 switch versions. The cleaned file has no EQ, compression, limiting or normalising added, so it is ready for your usual mastering.</p>
+
+      <section class="editor" aria-labelledby="editHead">
+        <div class="list-head">
+          <h2 id="editHead">Edit</h2>
+          <div class="zoom" role="group" aria-label="Zoom">
+            <button class="icon-btn" id="edZoomOut" type="button" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+            <span class="zoom-level" id="zoomLevel" aria-live="polite">1x</span>
+            <button class="icon-btn" id="edZoomIn" type="button" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          </div>
+        </div>
+
+        <div class="toolbar" role="toolbar" aria-label="Edit tools">
+          <button class="tool" id="edSplit" type="button" aria-keyshortcuts="S" title="Split at the playhead (S)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 7l-3 5 3 5M16 7l3 5-3 5"/></svg>Split</button>
+          <button class="tool" id="edCut" type="button" aria-keyshortcuts="Delete" title="Cut the selection (Delete)" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M8.5 7.5 20 18M8.5 16.5 20 6"/></svg>Cut</button>
+          <button class="tool" id="edCrop" type="button" title="Keep only the selection" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v16h16M2 6h16v16"/></svg>Keep only</button>
+          <button class="tool" id="edSection" type="button" title="Turn the selection into its own section" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12M20 6v12M8 9h8v6H8z"/></svg>Make section</button>
+          <span class="tool-gap" aria-hidden="true"></span>
+          <button class="tool" id="edIn" type="button" aria-keyshortcuts="I" title="Mark selection start at the playhead (I)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4v16M8 4h5M8 20h5"/></svg>Mark in</button>
+          <button class="tool" id="edOut" type="button" aria-keyshortcuts="O" title="Mark selection end at the playhead (O)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 4v16M16 4h-5M16 20h-5"/></svg>Mark out</button>
+          <span class="tool-gap" aria-hidden="true"></span>
+          <button class="tool" id="edUndo" type="button" aria-keyshortcuts="Control+Z Meta+Z" title="Undo (Ctrl+Z)" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Undo</button>
+          <button class="tool" id="edRedo" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z" title="Redo (Ctrl+Shift+Z)" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>Redo</button>
+          <button class="tool" id="edReset" type="button" title="Remove all edits" disabled>Reset edits</button>
+        </div>
+
+        <div class="wave" id="wave">
+          <div class="wave-scroll" id="waveScroll">
+            <div class="wave-track" id="waveTrack"><canvas id="waveCanvas" aria-hidden="true"></canvas></div>
+          </div>
+          <div class="wave-playhead" id="wavePlayhead" aria-hidden="true"></div>
+        </div>
+        <p class="ed-note" id="edNote" aria-live="polite">Drag across the waveform to select. Click a section to adjust it, or drag the dots at its top corners to fade.</p>
+
+        <div class="inspector" id="inspector">
+          <p class="sec-label" id="secLabel">Section 1 of 1</p>
+          <div class="sec-fields">
+            <div class="field">
+              <label for="secGain">Volume</label><output for="secGain" id="secGainOut"></output>
+              <input type="range" id="secGain" min="-24" max="12" step="0.5" value="0">
+            </div>
+            <div class="field">
+              <label for="secFadeIn">Fade in</label><output for="secFadeIn" id="secFadeInOut"></output>
+              <input type="range" id="secFadeIn" min="0" max="10" step="0.05" value="0">
+            </div>
+            <div class="field">
+              <label for="secFadeOut">Fade out</label><output for="secFadeOut" id="secFadeOutOut"></output>
+              <input type="range" id="secFadeOut" min="0" max="10" step="0.05" value="0">
+            </div>
+          </div>
+        </div>
+        <p class="hint">Keys: S splits, Delete cuts, I and O mark the selection, Esc clears it, Ctrl+Z undoes. Ctrl and the scroll wheel zoom the waveform. Joins and volume changes are smoothed so edits do not click.</p>
+      </section>
 
       <details class="more" id="export" hidden>
         <summary>Processing report</summary>
@@ -227,6 +292,7 @@
 
 <script src="wav.js"></script>
 <script src="engine.js"></script>
+<script src="edit.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
