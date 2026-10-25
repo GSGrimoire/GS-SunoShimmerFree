@@ -69,6 +69,8 @@ For v1 the two agreed to within 1e-14 on stereo, mono, three-channel, sub-window
 
 **v1** (October 2026). First release: static stage after the r/SunoAI method, new shimmer stage with transient guard, stereo-linked mask, silent-frame skipping, browser tool with A/B/Removed playback and spectrogram wipe, command line, test oracle.
 
+**Page v2** (October 2026). The web page was restyled after Suno's own interface so Suno users find it familiar: a settings panel on the left with a Clean button in place of Create, the Original, Cleaned and Removed versions as a song list with per-row downloads, and a fixed player bar. The engine is unchanged at v1, so results are identical.
+
 ---
 
-A free tool from [GS Grimoire](https://www.patreon.com/GSGrimoire).
+A free tool from [GS Grimoire](https://www.patreon.com/GSGrimoire). Not affiliated with or endorsed by Suno.

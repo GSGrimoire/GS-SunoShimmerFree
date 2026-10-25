@@ -1,4 +1,4 @@
-/* GS SunoShimmerFree page logic v1
+/* GS SunoShimmerFree page logic v2
  *
  * Decodes the dropped file (WAV directly, other formats through the
  * browser's decoder at the file's own sample rate), runs the engine in a
@@ -8,9 +8,15 @@
  *
  * Version history
  *   v1  First release.
+ *   v2  Suno-style layout: versions shown as a song list with per-row
+ *       downloads, fixed player bar, gradient slider fills, upload and
+ *       replace buttons reachable by keyboard, Suno-palette spectrograms,
+ *       files can be dropped anywhere on the page with a full-screen
+ *       overlay, number keys switch versions whatever has focus.
  */
 (function () {
   'use strict';
+  var PAGE_VERSION = '2';
   var Engine = window.ShimmerEngine, Wav = window.WavCodec;
   var $ = function (id) { return document.getElementById(id); };
   var PARAMS = ['denoiseStrength', 'maxAttenDb', 'bassHz', 'quietPct', 'shimmer', 'shimmerMaxDb', 'shimmerFromHz'];
@@ -24,10 +30,12 @@
     shimmerFromHz: function (v) { return (v / 1000).toFixed(1) + ' kHz'; }
   };
   var MODES = ['original', 'clean', 'removed'];
+  var MODE_NAME = { original: 'Original', clean: 'Cleaned', removed: 'Removed' };
 
   var st = {
     title: '', sr: 0, buffers: { original: null, clean: null, removed: null },
-    specs: {}, top: 0, applied: null, worker: null, busy: false, mode: 'original', split: 50
+    specs: {}, top: 0, applied: null, worker: null, busy: false, mode: 'original', split: 50,
+    offset: 0, playing: false
   };
 
   // ---------------- settings ----------------
@@ -41,10 +49,15 @@
     PARAMS.forEach(function (k) { $(k).value = p[k]; });
     refreshOutputs();
   }
+  function setFill(el) {
+    var min = Number(el.min), max = Number(el.max), v = Number(el.value);
+    el.style.setProperty('--fill', (max > min ? 100 * (v - min) / (max - min) : 0) + '%');
+  }
   function refreshOutputs() {
     PARAMS.forEach(function (k) {
-      var el = $(k), out = el.parentNode.querySelector('output');
-      out.textContent = SHOW[k](Number(el.value));
+      var el = $(k);
+      el.parentNode.querySelector('output').textContent = SHOW[k](Number(el.value));
+      setFill(el);
     });
     var on = $('denoise').checked;
     ['denoiseStrength', 'maxAttenDb', 'bassHz', 'quietPct'].forEach(function (k) { $(k).disabled = !on; });
@@ -58,9 +71,16 @@
   }
   function refreshDirty() {
     var loaded = !!st.buffers.original, dirty = loaded && !sameParams(readParams(), st.applied);
-    $('apply').disabled = !loaded || !dirty;
-    $('applyNote').textContent = st.busy ? 'Cleaning with these settings.' :
-      (dirty && st.applied ? 'Settings changed. Apply them to hear the difference.' : '');
+    $('apply').disabled = !loaded || !dirty || st.busy;
+    $('applyNote').textContent = !loaded ? 'Upload a track to start.' :
+      st.busy ? 'Cleaning with these settings.' :
+      dirty && st.applied ? 'Settings changed. Clean again to hear them.' : '';
+  }
+  function summary(p) {
+    var parts = [];
+    parts.push(p.denoise ? 'Static ' + p.maxAttenDb + ' dB' : 'Static off');
+    parts.push(p.shimmer > 0 ? 'Shimmer ' + Math.round(p.shimmer * 100) + '%' : 'Shimmer off');
+    return parts.join(', ');
   }
 
   // ---------------- decoding ----------------
@@ -101,11 +121,15 @@
     hideError();
     stopPlayback(); st.offset = 0;
     if (st.worker) { st.worker.terminate(); st.worker = null; }
-    st.buffers = { original: null, clean: null, removed: null }; st.specs = {}; st.applied = null;
+    st.buffers = { original: null, clean: null, removed: null }; st.specs = {}; st.applied = null; st.everCleaned = false;
     setModeAvailability(false); setMode('original');
     $('export').hidden = true;
+    $('metaClean').textContent = 'Not cleaned yet';
     st.title = file.name.replace(/\.[^.]+$/, '') || 'Track';
-    showViewer(); showBusy('Opening ' + file.name, 0);
+    $('songTitle').textContent = st.title;
+    $('nowTitle').textContent = st.title;
+    $('fileLine').textContent = 'Opening ' + file.name;
+    showLoaded(); showBusy('Opening ' + file.name, 0);
 
     file.arrayBuffer().then(function (ab) {
       var u8 = new Uint8Array(ab), isWav = u8.length > 12 && String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) === 'RIFF';
@@ -121,7 +145,8 @@
       if (!Off) throw new Error('This browser has no audio decoder. Try a current Chrome, Edge, Firefox or Safari.');
       var oc = new Off(1, 1, sr);
       return new Promise(function (res, rej) { oc.decodeAudioData(ab, res, rej); }).then(function (buf) {
-        return { chans: channelsOf(buf, false), sr: sr, kind: (guessed ? 'decoded at an assumed 48 kHz' : 'decoded by the browser') };
+        var ext = (file.name.match(/\.([^.]+)$/) || [, 'audio'])[1].toUpperCase();
+        return { chans: channelsOf(buf, false), sr: sr, kind: ext + (guessed ? ', decoded at an assumed 48 kHz' : '') };
       }, function () {
         throw new Error('This browser could not decode ' + file.name + '. Convert it to WAV or MP3 and try again.');
       });
@@ -129,16 +154,17 @@
       st.sr = d.sr;
       st.buffers.original = makeBuffer(d.chans, d.sr);
       var b = st.buffers.original;
-      $('fileLine').textContent = file.name + ': ' + fmtTime(b.duration) + ', ' + (d.sr / 1000) + ' kHz, ' +
-        (b.numberOfChannels === 1 ? 'mono' : b.numberOfChannels === 2 ? 'stereo' : b.numberOfChannels + ' channels') + ', ' + d.kind + '.';
-      $('fileLine').hidden = false;
+      var chText = b.numberOfChannels === 1 ? 'Mono' : b.numberOfChannels === 2 ? 'Stereo' : b.numberOfChannels + ' channels';
+      $('fileLine').textContent = fmtTime(b.duration) + ', ' + (d.sr / 1000) + ' kHz, ' + chText.toLowerCase() + ', ' + d.kind;
+      $('metaOriginal').textContent = d.kind + ', ' + chText.toLowerCase();
       $('tEnd').textContent = fmtTime(b.duration);
       $('transport').hidden = false;
+      document.body.classList.add('has-player');
       refreshDirty();
       runProcess();
     }).catch(function (e) {
       hideBusy();
-      if (!st.buffers.original) { $('spectro').hidden = true; $('drop').hidden = false; }
+      if (!st.buffers.original) showUpload();
       showError(e.message || String(e));
     });
   }
@@ -147,9 +173,9 @@
   function runProcess() {
     if (!st.buffers.original) return;
     if (st.worker) { st.worker.terminate(); st.worker = null; }
+    hideError();
     var params = readParams(), sr = st.sr, chans = channelsOf(st.buffers.original, true);
     st.busy = true; refreshDirty(); showBusy('Reading the track', 0);
-    $('apply').disabled = true;
 
     var handlers = {
       progress: function (f, stage) { showBusy(stage, f); },
@@ -164,6 +190,7 @@
         st.applied = params; st.busy = false;
         $('reportText').textContent = res.report.text;
         $('export').hidden = false;
+        $('metaClean').textContent = summary(params);
         setModeAvailability(true);
         if (st.mode === 'original' && !st.everCleaned) setMode('clean');
         st.everCleaned = true;
@@ -208,7 +235,6 @@
 
   // ---------------- playback ----------------
   var ctx = null;
-  st.offset = 0; st.playing = false;
   function audioCtx() {
     if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
     return ctx;
@@ -257,17 +283,21 @@
     MODES.forEach(function (k) {
       var r = document.querySelector('input[name="mode"][value="' + k + '"]');
       r.checked = k === m;
+      r.closest('.track').classList.toggle('is-active', k === m);
       if (st.gains && st.gains[k]) st.gains[k].gain.setTargetAtTime(k === m ? 1 : 0, audioCtx().currentTime, 0.006);
     });
     var tag = $('tagRight');
     tag.textContent = m === 'removed' ? 'Removed' : 'Cleaned';
-    tag.classList.toggle('is-removed', m === 'removed');
+    $('nowMode').textContent = MODE_NAME[m];
+    var tile = $('nowTile'), src = document.querySelector('.track[data-mode="' + m + '"] .tile');
+    tile.className = src.className; tile.innerHTML = src.innerHTML;
     drawSpectra();
   }
   function setModeAvailability(on) {
     ['clean', 'removed'].forEach(function (k) {
       document.querySelector('input[name="mode"][value="' + k + '"]').disabled = !on;
     });
+    $('dlClean').disabled = !on; $('dlRemoved').disabled = !on;
   }
   function setPlayButton() {
     var b = $('play');
@@ -276,9 +306,9 @@
   }
   function loop() { tick(); if (st.playing) requestAnimationFrame(loop); }
   function tick() {
-    var d = duration(), t = position();
+    var d = duration(), t = position(), seek = $('seek');
     $('tNow').textContent = fmtTime(t);
-    if (!st.seeking) $('seek').value = d ? Math.round(1000 * t / d) : 0;
+    if (!st.seeking) { seek.value = d ? Math.round(1000 * t / d) : 0; setFill(seek); }
     $('playhead').style.left = (d ? 100 * t / d : 0) + '%';
   }
 
@@ -296,8 +326,8 @@
     }
     return out;
   }
-  var LUT_MAIN = lut([[0, '#151722'], [0.3, '#2c2b57'], [0.55, '#74406f'], [0.8, '#c9a24a'], [1, '#f6edd4']]);
-  var LUT_REMOVED = lut([[0, '#151722'], [0.35, '#173a3a'], [0.7, '#5db3a6'], [1, '#e4f5f1']]);
+  var LUT_MAIN = lut([[0, '#1c1c1f'], [0.3, '#35286b'], [0.55, '#8b6efe'], [0.72, '#fd429c'], [0.88, '#ff9448'], [1, '#f7f4ef']]);
+  var LUT_REMOVED = lut([[0, '#1c1c1f'], [0.4, '#123a6b'], [0.75, '#1f8bff'], [1, '#d6ebff']]);
   var RANGE_DB = 72;
 
   function topOf(data) {
@@ -309,7 +339,7 @@
     var W = Math.max(1, Math.round(rect.width * dpr)), Hh = Math.max(1, Math.round(rect.height * dpr));
     if (canvas.width !== W || canvas.height !== Hh) { canvas.width = W; canvas.height = Hh; }
     var g = canvas.getContext('2d');
-    if (!spec) { g.fillStyle = '#1f2331'; g.fillRect(0, 0, W, Hh); return; }
+    if (!spec) { g.fillStyle = '#1c1c1f'; g.fillRect(0, 0, W, Hh); return; }
     var sw = spec.width, sh = spec.height, img = new ImageData(sw, sh), px = img.data, lo = st.top - RANGE_DB;
     for (var x = 0; x < sw; x++) for (var y = 0; y < sh; y++) {
       var v = (spec.data[x * sh + (sh - 1 - y)] - lo) / RANGE_DB;
@@ -322,7 +352,7 @@
     g.drawImage(off, 0, 0, W, Hh);
   }
   function drawSpectra() {
-    if ($('spectro').hidden) return;
+    if ($('loaded').hidden) return;
     var before = st.specs.original, after = st.mode === 'removed' ? st.specs.removed : st.specs.clean;
     var table = st.mode === 'removed' && st.specs.removed ? LUT_REMOVED : LUT_MAIN;
     paint($('canvasBefore'), before, LUT_MAIN);
@@ -337,7 +367,11 @@
   }
 
   // ---------------- view helpers ----------------
-  function showViewer() { $('drop').hidden = true; $('spectro').hidden = false; drawSpectra(); }
+  function showLoaded() { $('drop').hidden = true; $('loaded').hidden = false; drawSpectra(); }
+  function showUpload() {
+    $('loaded').hidden = true; $('drop').hidden = false;
+    $('transport').hidden = true; document.body.classList.remove('has-player');
+  }
   function showBusy(text, f) {
     $('busy').hidden = false; $('busyText').textContent = text;
     $('busyFill').style.width = Math.round(100 * Math.max(0, Math.min(1, f))) + '%';
@@ -364,23 +398,45 @@
   // ---------------- wiring ----------------
   function init() {
     $('ver').textContent = Engine.VERSION;
+    $('pageVer').textContent = PAGE_VERSION;
     writeParams(Engine.DEFAULTS);
     setSplit(50);
+    setFill($('seek'));
 
-    $('file').addEventListener('change', function () { if (this.files[0]) loadFile(this.files[0]); this.value = ''; });
-    var viewer = $('viewer');
-    ['dragenter', 'dragover'].forEach(function (ev) {
-      viewer.addEventListener(ev, function (e) { e.preventDefault(); viewer.classList.add('dragover'); });
+    var fileInput = $('file');
+    document.querySelectorAll('[data-pick]').forEach(function (b) {
+      b.addEventListener('click', function () { fileInput.click(); });
     });
-    ['dragleave', 'drop'].forEach(function (ev) {
-      viewer.addEventListener(ev, function (e) { e.preventDefault(); viewer.classList.remove('dragover'); });
+    fileInput.addEventListener('change', function () { if (this.files[0]) loadFile(this.files[0]); this.value = ''; });
+
+    // drop a file anywhere on the page; the overlay shows while a file is held over it
+    var overlay = $('dropOverlay'), depth = 0;
+    function hasFiles(e) {
+      var t = e.dataTransfer && e.dataTransfer.types;
+      return !!t && Array.prototype.indexOf.call(t, 'Files') >= 0;
+    }
+    function hideOverlay() { depth = 0; overlay.hidden = true; }
+    window.addEventListener('dragenter', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth++;
+      $('dropSub').textContent = st.buffers.original ? 'Replaces ' + st.title : 'WAV, MP3, FLAC and most other audio files';
+      overlay.hidden = false;
     });
-    viewer.addEventListener('drop', function (e) {
-      var f = e.dataTransfer && e.dataTransfer.files[0];
+    window.addEventListener('dragover', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+    });
+    window.addEventListener('dragleave', function (e) {
+      if (!hasFiles(e)) return;
+      if (--depth <= 0 || !e.relatedTarget) hideOverlay();
+    });
+    window.addEventListener('drop', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); hideOverlay();
+      var f = e.dataTransfer.files[0];
       if (f) loadFile(f);
     });
-    window.addEventListener('dragover', function (e) { e.preventDefault(); });
-    window.addEventListener('drop', function (e) { e.preventDefault(); });
+    window.addEventListener('blur', hideOverlay);
 
     PARAMS.concat(['denoise']).forEach(function (k) { $(k).addEventListener('input', refreshOutputs); });
     $('apply').addEventListener('click', runProcess);
@@ -393,7 +449,7 @@
     var seek = $('seek');
     seek.addEventListener('pointerdown', function () { st.seeking = true; });
     window.addEventListener('pointerup', function () { st.seeking = false; });
-    seek.addEventListener('input', function () { seekTo(duration() * seek.value / 1000); });
+    seek.addEventListener('input', function () { setFill(seek); seekTo(duration() * seek.value / 1000); });
 
     // divider drag, and click anywhere else on the spectrogram to seek
     var spectro = $('spectro'), split = $('split'), dragging = false;
@@ -425,8 +481,12 @@
     document.addEventListener('keydown', function (e) {
       var tg = e.target, tag = tg && tg.tagName;
       if (!st.buffers.original || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (tag === 'INPUT' && tg.type !== 'radio' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON' || tg === split) return;
-      if (e.key === ' ') { e.preventDefault(); if (st.playing) stopPlayback(); else startPlayback(); }
+      if (tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.key === ' ') {
+        // leave Space to buttons, sliders and checkboxes that use it themselves
+        if (tag === 'BUTTON' || (tag === 'INPUT' && tg.type !== 'radio') || tg === split) return;
+        e.preventDefault(); if (st.playing) stopPlayback(); else startPlayback();
+      }
       var i = ['1', '2', '3'].indexOf(e.key);
       if (i >= 0) {
         var r = document.querySelector('input[name="mode"][value="' + MODES[i] + '"]');
