@@ -1,0 +1,2 @@
+# Preserve the upstream encoder and licence notices byte for byte.
+vendor/lamejs-1.2.1/* -whitespace
