@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  GS SunoShimmerFree page v3
+  GS SunoShimmerFree page v4
   Version history
     v1  First release, GS Grimoire styling: spectrogram wipe, A/B/Removed
         switch, settings below the track.
@@ -12,6 +12,7 @@
     v3  Editor: waveform with sections, select, split, cut, keep only,
         section volume and fades, undo and redo, zoom. Playback and
         downloads follow the edits.
+    v4  Local MP3 downloads alongside WAV, with progress and cancellation.
 -->
 <html lang="en">
 <head>
@@ -144,9 +145,15 @@
             <option value="24" selected>24-bit WAV</option>
             <option value="16">16-bit WAV</option>
             <option value="32">32-bit float WAV</option>
+            <option value="mp3-320">MP3, 320 kilobits/second</option>
+            <option value="mp3-256">MP3, 256 kilobits/second</option>
+            <option value="mp3-192">MP3, 192 kilobits/second</option>
           </select>
         </label>
       </div>
+      <p class="hint">WAV keeps the full quality. MP3 makes a smaller, lossy copy. Both include your edits.</p>
+      <p class="hint" id="exportStatus" role="status" aria-live="polite" hidden></p>
+      <button class="chip" id="cancelExport" type="button" hidden>Cancel MP3 export</button>
       <fieldset class="tracks" id="listen">
         <legend class="visually-hidden">Listen to</legend>
         <div class="track" data-mode="original">
@@ -253,7 +260,8 @@
       <summary>How it works</summary>
       <p>The song is split into thousands of overlapping slices, about 43 milliseconds each, and each slice into a thousand frequency bands. Two passes then adjust the level of each band in each slice, and the slices are stitched back together with their original timing, so nothing about the attack or the stereo image moves.</p>
       <p>The static pass follows the adaptive spectral denoise method shared on r/SunoAI: learn what the hiss sounds like from the quietest moments, subtract it gently in the bass and more firmly up top. The shimmer pass looks for sound that is both brief and narrow, the signature of that glassy grain, and pulls it down to the level of its surroundings. A drum hit rises across every band at once and a held note lasts, so both are left as they are.</p>
-      <p>MP3 works, but the encoder has already thrown away detail and added its own artifacts, so start from the WAV download when you can. The cleaned file always comes out as WAV.</p>
+      <p>MP3 input works, but it has already discarded detail and added its own artifacts, so start from WAV when you can. Download Cleaned or Removed as lossless WAV or a smaller MP3. MP3 supports mono and stereo; its sample rate may change to a supported rate and its encoder can add a short delay or padding. Keep WAV for further editing or exact alignment.</p>
+      <p>MP3 encoding uses <a href="https://github.com/zhuker/lamejs">lamejs</a> and <a href="https://lame.sourceforge.net/">LAME</a>, loaded locally with this page. <a href="vendor/README.md">Encoder source and licences</a>.</p>
     </details>
 
     <footer class="foot">

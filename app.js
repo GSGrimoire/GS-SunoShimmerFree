@@ -1,10 +1,10 @@
-/* GS SunoShimmerFree page logic v3
+/* GS SunoShimmerFree page logic v4
  *
  * Decodes the dropped file (WAV directly, other formats through the
  * browser's decoder at the file's own sample rate), runs the engine in a
  * worker, plays Original, Cleaned and Removed in lockstep so switching
  * keeps your place, draws the before and after spectrograms with a
- * draggable divider, edits the timeline, and writes the WAV downloads.
+ * draggable divider, edits the timeline, and writes WAV or MP3 downloads.
  *
  * Editing is non-destructive (see edit.js). Playback schedules every
  * section straight from the source buffers with its own gain envelope, so
@@ -23,10 +23,11 @@
  *       fades (sliders and draggable corner handles), mark in and out,
  *       undo and redo, zoom. Playback, seek bar and downloads follow the
  *       edits; removed stretches are shaded on the spectrogram.
+ *   v4  Local MP3 export with quality choices, progress and cancellation.
  */
 (function () {
   'use strict';
-  var PAGE_VERSION = '3';
+  var PAGE_VERSION = '4';
   var Engine = window.ShimmerEngine, Wav = window.WavCodec, Ed = window.ShimmerEdit;
   var $ = function (id) { return document.getElementById(id); };
   var PARAMS = ['denoiseStrength', 'maxAttenDb', 'bassHz', 'quietPct', 'shimmer', 'shimmerMaxDb', 'shimmerFromHz'];
@@ -49,7 +50,7 @@
   var st = {
     title: '', sr: 0, n: 0, buffers: { original: null, clean: null, removed: null },
     specs: {}, top: 0, applied: null, worker: null, busy: false, mode: 'original', split: 50,
-    offset: 0, playing: false,
+    offset: 0, playing: false, exportWorker: null,
     segs: null, hist: [], fut: [], sel: null, sec: null, zoom: 1, peaks: {}, peakMax: {}
   };
 
@@ -90,6 +91,7 @@
     $('applyNote').textContent = !loaded ? 'Upload a track to start.' :
       st.busy ? 'Cleaning with these settings.' :
       dirty && st.applied ? 'Settings changed. Clean again to hear them.' : '';
+    refreshDownloadControls();
   }
   function summary(p) {
     return (p.denoise ? 'Static ' + p.maxAttenDb + ' dB' : 'Static off') + ', ' +
@@ -131,6 +133,7 @@
   }
 
   function loadFile(file) {
+    cancelExport();
     hideError();
     stopPlayback(); st.offset = 0;
     if (st.worker) { st.worker.terminate(); st.worker = null; }
@@ -189,6 +192,7 @@
   // ---------------- processing ----------------
   function runProcess() {
     if (!st.buffers.original) return;
+    cancelExport();
     if (st.worker) { st.worker.terminate(); st.worker = null; }
     hideError();
     var params = readParams(), sr = st.sr, chans = channelsOf(st.buffers.original, true);
@@ -337,7 +341,7 @@
     ['clean', 'removed'].forEach(function (k) {
       document.querySelector('input[name="mode"][value="' + k + '"]').disabled = !on;
     });
-    $('dlClean').disabled = !on; $('dlRemoved').disabled = !on;
+    refreshDownloadControls();
   }
   function setPlayButton() {
     var b = $('play');
@@ -544,7 +548,8 @@
 
   function drawWave() {
     var canvas = $('waveCanvas');
-    if (!st.segs || $('loaded').hidden) return;
+    // Replacing a file clears its waveform peaks before the new audio is decoded.
+    if (!st.segs || !st.peaks.original || $('loaded').hidden) return;
     var v = waveView(), dpr = window.devicePixelRatio || 1;
     if (!v.W) return;
     canvas.style.width = v.W + 'px';
@@ -781,21 +786,85 @@
     var m = Math.floor(s / 60), r = s - m * 60;
     return m + ':' + (r < 10 ? '0' : '') + r.toFixed(2);
   }
-  function download(kind) {
-    var b = st.buffers[kind];
-    if (!b) return;
-    var bits = Number($('bits').value), chans = channelsOf(b, false), edited = !Ed.isPristine(st.segs, st.n), peak = 0;
-    if (edited) { var res = Ed.render(chans, st.segs, b.sampleRate); chans = res.channels; peak = res.peak; }
-    var blob = new Blob([Wav.encodeWav(chans, b.sampleRate, bits)], { type: 'audio/wav' });
+  function refreshDownloadControls() {
+    var mp3 = $('bits').value.indexOf('mp3-') === 0;
+    ['clean', 'removed'].forEach(function (kind) {
+      var button = $(kind === 'clean' ? 'dlClean' : 'dlRemoved');
+      button.disabled = !st.buffers[kind] || st.busy || !!st.exportWorker;
+      var label = 'Download ' + (kind === 'clean' ? 'cleaned' : 'removed') + (mp3 ? ' MP3' : ' WAV');
+      button.setAttribute('aria-label', label); button.title = label;
+    });
+    $('cancelExport').hidden = !st.exportWorker;
+  }
+  function exportStatus(text) {
+    $('exportStatus').textContent = text || '';
+    $('exportStatus').hidden = !text;
+  }
+  function cancelExport() {
+    if (st.exportWorker) st.exportWorker.terminate();
+    st.exportWorker = null;
+    exportStatus(''); refreshDownloadControls();
+  }
+  function saveDownload(blob, filename) {
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = st.title + (kind === 'clean' ? ' - Clean' : ' - Removed') + (edited ? ' (edited)' : '') + '.wav';
+    a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 60000);
-    if (peak >= 1 && bits !== 32) {
-      edNote('The edited ' + MODE_NAME[kind].toLowerCase() + ' track peaks at +' + (20 * Math.log10(peak)).toFixed(1) +
-        ' dBFS and clipped in the download. Lower the loudest section, or download as 32-bit float.', true);
+  }
+  function clippingNote(kind, peak) {
+    if (peak >= 1) {
+      edNote('The ' + MODE_NAME[kind].toLowerCase() + ' track peaks at +' + (20 * Math.log10(peak)).toFixed(1) +
+        ' dBFS and clipped in the download. Lower the loudest section, or download as 32-bit float WAV.', true);
     }
+  }
+  function download(kind) {
+    var b = st.buffers[kind];
+    if (!b || st.busy || st.exportWorker) return;
+    hideError();
+    var format = $('bits').value, mp3 = format.indexOf('mp3-') === 0;
+    var edited = !Ed.isPristine(st.segs, st.n);
+    var filename = st.title + (kind === 'clean' ? ' - Clean' : ' - Removed') + (edited ? ' (edited)' : '') + (mp3 ? '.mp3' : '.wav');
+    if (!mp3) {
+      try {
+        var bits = Number(format), chans = channelsOf(b, false), peak = 0;
+        if (edited) { var res = Ed.render(chans, st.segs, b.sampleRate); chans = res.channels; peak = res.peak; }
+        saveDownload(new Blob([Wav.encodeWav(chans, b.sampleRate, bits)], { type: 'audio/wav' }), filename);
+        exportStatus('WAV download ready.');
+        if (bits !== 32) clippingNote(kind, peak);
+      } catch (err) { showError('WAV export failed: ' + err.message); }
+      return;
+    }
+    if (b.numberOfChannels > 2) {
+      showError('MP3 supports mono or stereo. Choose WAV to keep all channels.'); return;
+    }
+    var w;
+    try { w = new Worker('export-worker.js'); }
+    catch (err) { showError('MP3 export needs a web worker. Open the hosted page or use WAV.'); return; }
+    st.exportWorker = w; refreshDownloadControls();
+    exportStatus('Preparing MP3 from the current edit...');
+    function fail(message) {
+      if (st.exportWorker !== w) return;
+      cancelExport(); showError('MP3 export failed: ' + message + ' WAV is still available.');
+    }
+    w.onmessage = function (event) {
+      if (st.exportWorker !== w) return;
+      var m = event.data;
+      if (m.type === 'progress') exportStatus('Encoding MP3: ' + Math.round(m.fraction * 100) + '%');
+      else if (m.type === 'error') fail(m.message);
+      else if (m.type === 'done') {
+        cancelExport();
+        saveDownload(new Blob([m.bytes], { type: 'audio/mpeg' }), filename);
+        exportStatus('MP3 download ready.'); clippingNote(kind, m.peak);
+      }
+    };
+    w.onerror = function (event) { event.preventDefault(); fail(event.message || 'The encoder could not load.'); };
+    try {
+      // Transfer copies, leaving playback buffers intact. The worker receives an edit snapshot.
+      var copies = channelsOf(b, true);
+      w.postMessage({ type: 'mp3', channels: copies, sampleRate: b.sampleRate,
+        bitrate: Number(format.slice(4)), segs: edited ? st.segs : null }, copies.map(function (c) { return c.buffer; }));
+    } catch (err) { fail(err.message); }
   }
 
   // ---------------- wiring ----------------
@@ -880,6 +949,8 @@
 
     $('dlClean').addEventListener('click', function () { download('clean'); });
     $('dlRemoved').addEventListener('click', function () { download('removed'); });
+    $('bits').addEventListener('change', refreshDownloadControls);
+    $('cancelExport').addEventListener('click', function () { cancelExport(); exportStatus('MP3 export cancelled.'); });
 
     // editor
     $('edSplit').addEventListener('click', doSplit);
