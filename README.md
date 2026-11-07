@@ -1,10 +1,10 @@
 # GS SunoShimmerFree
 
-Automatic static and shimmer removal for AI-rendered music.
+Automatic static and shimmer removal and optional sound polishing for AI-rendered music.
 
 **Use it in your browser:** https://gsgrimoire.github.io/GS-SunoShimmerFree/
 
-Drop in a WAV or MP3, flip between Original, Cleaned and Removed without losing your place in the song, adjust the settings, trim and tidy the arrangement, and download a clean WAV or MP3. Everything runs locally in the browser tab, so your track is never uploaded. A four-minute stereo song takes about 15 to 20 seconds to clean on a typical laptop.
+Drop in a WAV or MP3, flip between Original, Cleaned, optional Polished, and Removed without losing your place in the song, adjust the settings, trim and tidy the arrangement, and download a WAV or MP3. Everything runs locally in the browser tab, so your track is never uploaded. A four-minute stereo song takes about 15 to 20 seconds to clean on a typical laptop.
 
 ## What it removes
 
@@ -26,6 +26,27 @@ Both stages share one gain mask across all channels, so the stereo image does no
 | Shimmer amount | 60% | Zero turns the shimmer stage off |
 | Deepest cut (shimmer) | 6 dB | The most a single fleck is turned down |
 | Shimmer starts at | 4 kHz | The stage fades in from here to 1.5 times this |
+
+## Sound Polish (v5a)
+
+After cleaning a track, use **Sound Polish** in the left settings panel to generate an optional **Polished** version. The original and cleaned versions remain untouched and available for comparison. Polish processing is off until you press **Polish cleaned track**.
+
+The current release has two conservative tone controls:
+
+- **Clarity (0 to 100%)** gently cuts the low-mid range around 320 Hz (up to 3 decibels), which may reduce a muddy or distant impression.
+- **Presence (0 to 100%)** gently boosts the upper mids around 2.5 kHz (up to 2.5 decibels), which may bring vocals and instruments forward. Use restraint if the track is already harsh.
+
+Presets: Natural, Clear, Warm, Forward, or Custom. All controls use identical filter coefficients across channels and apply linked sample-peak safety attenuation when an enabled process would exceed 97% of digital full scale. **This is not loudness normalization, dynamic compression, transient restoration, or dereverberation.** It cannot reconstruct information missing from the Suno mix.
+
+The **Polished** row can be played and downloaded in WAV or MP3, using the existing non-destructive timeline edits. Switching versions keeps the playback position. The spectrogram currently displays the **Cleaned** version even while Polished is selected; it is not a spectrogram of the final polished audio.
+
+For algorithm tests (requires Node 18 or newer):
+
+\`\`\`
+node tests/polish_test.js
+\`\`\`
+
+Development roadmap and agreed scope: [Sound Polish, quality assistant, and stems](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/2). Next: gentle dynamic control, measured loudness and safe optimization, then transient enhancement. Future stem-aware workflows are exploratory.
 
 ## Editing
 
@@ -53,7 +74,7 @@ For output, choose **Download as** above the versions list, then use the downloa
 - **WAV:** the existing 16-bit, 24-bit (default), or 32-bit float choices.
 - **MP3:** target bitrates of 192, 256, or 320 kilobits per second. These are smaller, lossy copies.
 
-Both formats include the current cuts, section volumes and fades. MP3 encoding runs locally in a separate worker with progress and a Cancel button. Changing the source or cleaning again cancels an in-progress export. Later edits do not change an export already underway.
+Both formats include the current cuts, section volumes and fades. Polished downloads also include Sound Polish tone adjustments. MP3 encoding runs locally in a separate worker with progress and a Cancel button. Changing the source or cleaning again cancels an in-progress export. Later edits do not change an export already underway.
 
 MP3 supports mono or stereo. Tracks with more channels can still be downloaded as WAV, without a silent downmix. The encoder converts unsupported sample rates to an MP3-compatible rate, and low-rate sources can use lower bitrates than the selected target. MP3 also adds encoder delay and padding. Keep WAV for archival use, further processing, exact alignment, or samples above full scale (32-bit float). MP3 export requires a worker-capable browser on the hosted page or a local web server; WAV remains available if MP3 encoding fails.
 
@@ -73,7 +94,9 @@ Options: `--out folder`, `--format wav|mp3|both` (default WAV), `--mp3-bitrate 1
 
 | File | Role |
 |---|---|
-| `engine.js` | The processing method. The single source of truth, used by the page, the worker and the command line |
+| `engine.js` | The static/shimmer processing method. The single source of truth, used by the page, the worker and the command line |
+| `polish.js`, `polish-worker.js` | Optional browser-local tone finishing and its background worker |
+| `tests/polish_test.js` | Clarity/presence filter response, bypass, peak-safety and stereo regression tests |
 | `edit.js` | The editing method: sections, cut, split, volume, fades, declicking, rendering |
 | `wav.js` | WAV reading and writing |
 | `mp3.js`, `export-worker.js` | Shared MP3 encoding and background browser export |
@@ -122,6 +145,8 @@ This checks mono and stereo, sample-rate conversion, bitrate choices, short and 
 **Page v3, edit engine v1** (October 2026). An editor under the versions list: zoomable waveform with sections, drag to select, cut, keep only, split, make section, section volume and fades with draggable handles, mark in and out, undo and redo. Joins and volume changes are declicked. Playback, the seek bar and downloads follow the edits, and cut stretches are shaded on the spectrogram. The cleaning engine is unchanged at v1.
 
 **Page v4, command line v2** (October 2026). Add local MP3 downloads alongside WAV, including edited Cleaned and Removed tracks, quality selection, background encoding, progress and cancellation. The command line adds `--format wav|mp3|both` and `--mp3-bitrate`. Also fix a pre-existing waveform redraw error when replacing a loaded track. Cleaning and edit engines are unchanged.
+
+**Page v5a, Sound Polish v1** (November 2026). Optional preset-driven clarity and presence after cleaning, with a separate Polished playback/download version, independent worker and peak-safe linked output. Original cleaning and command line behavior are unchanged.
 
 ---
 
