@@ -1,4 +1,4 @@
-/* GS SunoShimmerFree page logic v4
+/* GS SunoShimmerFree page logic v5
  *
  * Decodes the dropped file (WAV directly, other formats through the
  * browser's decoder at the file's own sample rate), runs the engine in a
@@ -24,11 +24,12 @@
  *       undo and redo, zoom. Playback, seek bar and downloads follow the
  *       edits; removed stretches are shaded on the spectrogram.
  *   v4  Local MP3 export with quality choices, progress and cancellation.
+ *   v5a Optional Sound Polish clarity/presence with presets and a separate version.
  */
 (function () {
   'use strict';
-  var PAGE_VERSION = '4';
-  var Engine = window.ShimmerEngine, Wav = window.WavCodec, Ed = window.ShimmerEdit;
+  var PAGE_VERSION = '5a';
+  var Engine = window.ShimmerEngine, Wav = window.WavCodec, Ed = window.ShimmerEdit, Polish = window.SunoPolish;
   var $ = function (id) { return document.getElementById(id); };
   var PARAMS = ['denoiseStrength', 'maxAttenDb', 'bassHz', 'quietPct', 'shimmer', 'shimmerMaxDb', 'shimmerFromHz'];
   var SHOW = {
@@ -40,17 +41,18 @@
     shimmerMaxDb: function (v) { return v + ' dB'; },
     shimmerFromHz: function (v) { return (v / 1000).toFixed(1) + ' kHz'; }
   };
-  var MODES = ['original', 'clean', 'removed'];
-  var MODE_NAME = { original: 'Original', clean: 'Cleaned', removed: 'Removed' };
+  var MODES = ['original', 'clean', 'polish', 'removed'];
+  var MODE_NAME = { original: 'Original', clean: 'Cleaned', polish: 'Polished', removed: 'Removed' };
   var BUCKET = 256;          // samples per waveform peak
   var CURVE_STEP_S = 0.002;  // playback envelope resolution
   var MAX_ZOOM = 64, HISTORY = 200;
   var ED_HELP = 'Drag across the waveform to select. Click a section to adjust it, or drag the dots at its top corners to fade.';
 
   var st = {
-    title: '', sr: 0, n: 0, buffers: { original: null, clean: null, removed: null },
+    title: '', sr: 0, n: 0, buffers: { original: null, clean: null, polish: null, removed: null },
     specs: {}, top: 0, applied: null, worker: null, busy: false, mode: 'original', split: 50,
     offset: 0, playing: false, exportWorker: null,
+    polishWorker: null, polishGeneration: 0, polishing: false, polishApplied: null, polishGainDb: 0,
     segs: null, hist: [], fut: [], sel: null, sec: null, zoom: 1, peaks: {}, peakMax: {}
   };
 
@@ -98,6 +100,106 @@
       (p.shimmer > 0 ? 'Shimmer ' + Math.round(p.shimmer * 100) + '%' : 'Shimmer off');
   }
 
+
+  // ---------------- optional Sound Polish ----------------
+  function readPolishParams() {
+    return Polish.settings({ clarity: Number($('polishClarity').value), presence: Number($('polishPresence').value) });
+  }
+  function setPolishPreset(name) {
+    var p = Polish.PRESETS[name];
+    if (!p) return;
+    $('polishPreset').value = name;
+    $('polishClarity').value = p.clarity;
+    $('polishPresence').value = p.presence;
+    refreshPolish();
+  }
+  function refreshPolish() {
+    ['polishClarity', 'polishPresence'].forEach(function (id) {
+      var el = $(id);
+      el.parentNode.querySelector('output').textContent = Number(el.value) + '%';
+      setFill(el);
+    });
+    var ready = !!st.buffers.clean && !st.busy;
+    var changed = !sameParams(readPolishParams(), st.polishApplied);
+    $('polishApply').disabled = !ready || st.polishing || (!changed && !!st.buffers.polish);
+    $('polishApply').textContent = st.polishing ? 'Polishing...' :
+      st.buffers.polish && changed ? 'Polish again' : 'Polish cleaned track';
+    $('polishStatus').textContent = st.polishing ? 'Processing tone adjustments locally.' :
+      !ready ? 'Clean a track first.' :
+      st.buffers.polish && changed ? 'Settings changed. Reapply to hear the difference.' :
+      st.buffers.polish ? 'Polished version ready.' +
+        (st.polishGainDb < -0.01 ? ' Peak protection: ' + st.polishGainDb.toFixed(1) + ' dB.' : '') :
+      'Choose a preset, then create a separate Polished version.';
+  }
+  function cancelPolish() {
+    st.polishGeneration++;
+    if (st.polishWorker) st.polishWorker.terminate();
+    st.polishWorker = null;
+    st.polishing = false;
+  }
+  function runPolish() {
+    if (!st.buffers.clean || st.busy || st.polishing) return;
+    cancelExport();
+    hideError();
+    var params = readPolishParams(), sr = st.sr, gen = ++st.polishGeneration;
+    st.polishing = true;
+    refreshPolish();
+    showBusy('Applying Sound Polish', 0.25);
+    function done(res) {
+      if (gen !== st.polishGeneration) return;
+      st.polishWorker = null;
+      st.buffers.polish = makeBuffer(res.channels, sr);
+      computePeaks('polish');
+      st.polishApplied = params;
+      st.polishGainDb = res.safetyGainDb;
+      st.polishing = false;
+      $('metaPolish').textContent = 'Clarity ' + params.clarity + '%, presence ' + params.presence + '%';
+      setModeAvailability(true);
+      setMode('polish');
+      hideBusy(); refreshPolish(); drawWave();
+      if (st.playing) restartPlayback();
+    }
+    function fail(msg) {
+      if (gen !== st.polishGeneration) return;
+      st.polishWorker = null;
+      st.polishing = false;
+      hideBusy(); refreshPolish();
+      showError('Sound Polish failed: ' + msg);
+    }
+    function inline() {
+      // file:// or worker-blocking browsers use a synchronous fallback.
+      showBusy('Polishing on this page; it will pause until done', 0.1);
+      setTimeout(function () {
+        if (gen !== st.polishGeneration) return;
+        try { done(Polish.process(channelsOf(st.buffers.clean, true), sr, params)); }
+        catch (err) { fail(err.message || String(err)); }
+      }, 50);
+    }
+    var w;
+    try { w = new Worker('polish-worker.js'); } catch (err) { inline(); return; }
+    st.polishWorker = w;
+    var started = false;
+    w.onmessage = function (event) {
+      if (gen !== st.polishGeneration) return;
+      started = true;
+      var m = event.data;
+      w.terminate();
+      if (m.type === 'done') done(m);
+      else fail(m.message || 'Unknown processing error.');
+    };
+    w.onerror = function (event) {
+      event.preventDefault();
+      if (gen !== st.polishGeneration) return;
+      w.terminate(); st.polishWorker = null;
+      if (!started) inline(); else fail(event.message || 'The worker stopped.');
+    };
+    try {
+      var chans = channelsOf(st.buffers.clean, true);
+      w.postMessage({ type: 'polish', channels: chans, sampleRate: sr, params: params },
+        chans.map(function (c) { return c.buffer; }));
+    } catch (err) { w.terminate(); st.polishWorker = null; fail(err.message); }
+  }
+
   // ---------------- decoding ----------------
   function sniffRate(u8) {
     var n = u8.length;
@@ -134,14 +236,18 @@
 
   function loadFile(file) {
     cancelExport();
+    cancelPolish();
     hideError();
     stopPlayback(); st.offset = 0;
     if (st.worker) { st.worker.terminate(); st.worker = null; }
-    st.buffers = { original: null, clean: null, removed: null }; st.specs = {}; st.applied = null; st.everCleaned = false;
+    st.buffers = { original: null, clean: null, polish: null, removed: null }; st.specs = {}; st.applied = null; st.everCleaned = false;
+    st.polishApplied = null;
     st.peaks = {}; st.peakMax = {};
     setModeAvailability(false); setMode('original');
     $('export').hidden = true;
     $('metaClean').textContent = 'Not cleaned yet';
+    $('metaPolish').textContent = 'Apply Sound Polish after cleaning.';
+    refreshPolish();
     st.title = file.name.replace(/\.[^.]+$/, '') || 'Track';
     $('songTitle').textContent = st.title;
     $('nowTitle').textContent = st.title;
@@ -193,6 +299,12 @@
   function runProcess() {
     if (!st.buffers.original) return;
     cancelExport();
+    cancelPolish();
+    if (st.mode === 'polish') setMode('clean');
+    st.buffers.polish = null; st.polishApplied = null;
+    $('metaPolish').textContent = 'Apply Sound Polish after cleaning.';
+    setModeAvailability(!!st.buffers.clean);
+    refreshPolish();
     if (st.worker) { st.worker.terminate(); st.worker = null; }
     hideError();
     var params = readParams(), sr = st.sr, chans = channelsOf(st.buffers.original, true);
@@ -216,7 +328,7 @@
         setModeAvailability(true);
         if (st.mode === 'original' && !st.everCleaned) setMode('clean');
         st.everCleaned = true;
-        hideBusy(); refreshDirty(); drawSpectra(); drawWave();
+        hideBusy(); refreshDirty(); refreshPolish(); drawSpectra(); drawWave();
         if (st.playing) restartPlayback();
       },
       error: function (msg) {
@@ -331,7 +443,7 @@
       r.closest('.track').classList.toggle('is-active', k === m);
       if (st.gains && st.gains[k]) st.gains[k].gain.setTargetAtTime(k === m ? 1 : 0, audioCtx().currentTime, 0.006);
     });
-    $('tagRight').textContent = m === 'removed' ? 'Removed' : 'Cleaned';
+    $('tagRight').textContent = m === 'removed' ? 'Removed' : m === 'polish' ? 'Cleaned spectrum' : 'Cleaned';
     $('nowMode').textContent = MODE_NAME[m];
     var tile = $('nowTile'), src = document.querySelector('.track[data-mode="' + m + '"] .tile');
     tile.className = src.className; tile.innerHTML = src.innerHTML;
@@ -341,6 +453,7 @@
     ['clean', 'removed'].forEach(function (k) {
       document.querySelector('input[name="mode"][value="' + k + '"]').disabled = !on;
     });
+    document.querySelector('input[name="mode"][value="polish"]').disabled = !on || !st.buffers.polish;
     refreshDownloadControls();
   }
   function setPlayButton() {
@@ -788,10 +901,10 @@
   }
   function refreshDownloadControls() {
     var mp3 = $('bits').value.indexOf('mp3-') === 0;
-    ['clean', 'removed'].forEach(function (kind) {
-      var button = $(kind === 'clean' ? 'dlClean' : 'dlRemoved');
-      button.disabled = !st.buffers[kind] || st.busy || !!st.exportWorker;
-      var label = 'Download ' + (kind === 'clean' ? 'cleaned' : 'removed') + (mp3 ? ' MP3' : ' WAV');
+    ['clean', 'polish', 'removed'].forEach(function (kind) {
+      var button = $(kind === 'clean' ? 'dlClean' : kind === 'polish' ? 'dlPolish' : 'dlRemoved');
+      button.disabled = !st.buffers[kind] || st.busy || !!st.exportWorker || (kind === 'polish' && st.polishing);
+      var label = 'Download ' + MODE_NAME[kind].toLowerCase() + (mp3 ? ' MP3' : ' WAV');
       button.setAttribute('aria-label', label); button.title = label;
     });
     $('cancelExport').hidden = !st.exportWorker;
@@ -824,7 +937,7 @@
     hideError();
     var format = $('bits').value, mp3 = format.indexOf('mp3-') === 0;
     var edited = !Ed.isPristine(st.segs, st.n);
-    var filename = st.title + (kind === 'clean' ? ' - Clean' : ' - Removed') + (edited ? ' (edited)' : '') + (mp3 ? '.mp3' : '.wav');
+    var filename = st.title + (kind === 'clean' ? ' - Clean' : kind === 'polish' ? ' - Polished' : ' - Removed') + (edited ? ' (edited)' : '') + (mp3 ? '.mp3' : '.wav');
     if (!mp3) {
       try {
         var bits = Number(format), chans = channelsOf(b, false), peak = 0;
@@ -872,6 +985,7 @@
     $('ver').textContent = Engine.VERSION;
     $('pageVer').textContent = PAGE_VERSION;
     writeParams(Engine.DEFAULTS);
+    setPolishPreset('natural');
     setSplit(50);
     setFill($('seek'));
 
@@ -913,6 +1027,11 @@
     PARAMS.concat(['denoise']).forEach(function (k) { $(k).addEventListener('input', refreshOutputs); });
     $('apply').addEventListener('click', runProcess);
     $('reset').addEventListener('click', function () { writeParams(Engine.DEFAULTS); });
+    $('polishPreset').addEventListener('change', function () { setPolishPreset(this.value); });
+    ['polishClarity', 'polishPresence'].forEach(function (id) {
+      $(id).addEventListener('input', function () { $('polishPreset').value = 'custom'; refreshPolish(); });
+    });
+    $('polishApply').addEventListener('click', runPolish);
 
     $('play').addEventListener('click', function () { if (st.playing) stopPlayback(); else startPlayback(); });
     document.querySelectorAll('input[name="mode"]').forEach(function (r) {
@@ -948,6 +1067,7 @@
     });
 
     $('dlClean').addEventListener('click', function () { download('clean'); });
+    $('dlPolish').addEventListener('click', function () { download('polish'); });
     $('dlRemoved').addEventListener('click', function () { download('removed'); });
     $('bits').addEventListener('change', refreshDownloadControls);
     $('cancelExport').addEventListener('click', function () { cancelExport(); exportStatus('MP3 export cancelled.'); });
@@ -1005,7 +1125,7 @@
       else if (key === 'o') { e.preventDefault(); markOut(); }
       else if (key === 'escape') { if (st.sel) clearSel(); }
       else {
-        var i = ['1', '2', '3'].indexOf(e.key);
+        var i = ['1', '2', '3', '4'].indexOf(e.key);
         if (i >= 0) {
           var r = document.querySelector('input[name="mode"][value="' + MODES[i] + '"]');
           if (!r.disabled) setMode(MODES[i]);
