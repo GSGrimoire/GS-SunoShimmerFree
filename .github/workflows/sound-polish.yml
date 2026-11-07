@@ -1,0 +1,28 @@
+name: Sound Polish checks
+
+on:
+  push:
+    paths:
+      - 'polish.js'
+      - 'polish-worker.js'
+      - 'tests/polish_test.js'
+      - '.github/workflows/sound-polish.yml'
+  pull_request:
+    paths:
+      - 'polish.js'
+      - 'polish-worker.js'
+      - 'tests/polish_test.js'
+      - '.github/workflows/sound-polish.yml'
+
+jobs:
+  sound-polish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test tone processing and peak safety
+        run: node tests/polish_test.js
