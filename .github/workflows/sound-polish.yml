@@ -42,6 +42,10 @@ jobs:
         run: node tests/polish_test.js
       - name: Test browser-state integration and export races
         run: node tests/polish_integration_test.js
+      - name: Install FFmpeg for independent codec validation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
       - name: Test WAV/MP3 encoders and command line regression
         run: node tests/mp3_test.js
       - name: Test editor regression against synthetic WAV
