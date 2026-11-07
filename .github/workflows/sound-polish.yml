@@ -5,13 +5,27 @@ on:
     paths:
       - 'polish.js'
       - 'polish-worker.js'
+      - 'app.js'
+      - 'index.html'
+      - 'style.css'
+      - 'edit.js'
+      - 'wav.js'
+      - 'export-worker.js'
       - 'tests/polish_test.js'
+      - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
   pull_request:
     paths:
       - 'polish.js'
       - 'polish-worker.js'
+      - 'app.js'
+      - 'index.html'
+      - 'style.css'
+      - 'edit.js'
+      - 'wav.js'
+      - 'export-worker.js'
       - 'tests/polish_test.js'
+      - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
 
 jobs:
@@ -26,3 +40,5 @@ jobs:
           node-version: '22'
       - name: Test tone processing and peak safety
         run: node tests/polish_test.js
+      - name: Test browser-state integration and export races
+        run: node tests/polish_integration_test.js
