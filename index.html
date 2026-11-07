@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  GS SunoShimmerFree page v4
+  GS SunoShimmerFree page v5
   Version history
     v1  First release, GS Grimoire styling: spectrogram wipe, A/B/Removed
         switch, settings below the track.
@@ -13,6 +13,7 @@
         section volume and fades, undo and redo, zoom. Playback and
         downloads follow the edits.
     v4  Local MP3 downloads alongside WAV, with progress and cancellation.
+    v5a Optional Sound Polish tone finishing with presets and a separate audio version.
 -->
 <html lang="en">
 <head>
@@ -91,6 +92,33 @@
         <input type="range" id="shimmerFromHz" min="1500" max="12000" step="100" aria-describedby="h-from">
         <p class="help" id="h-from">Lower it if the grain reaches into vocals and guitars.</p>
       </div>
+    </section>
+
+    <section class="group" aria-labelledby="gPolish">
+      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5a</span></div>
+      <p class="group-note">Optional tone finishing after cleaning. Clarity reduces low-mid muddiness; presence lifts the upper mids. This is not reverb removal.</p>
+      <div class="field">
+        <label for="polishPreset">Preset</label>
+        <select id="polishPreset" class="polish-select">
+          <option value="natural" selected>Natural</option>
+          <option value="clear">Clear</option>
+          <option value="warm">Warm</option>
+          <option value="forward">Forward</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="polishClarity">Clarity</label><output for="polishClarity">20%</output>
+        <input type="range" id="polishClarity" min="0" max="100" step="5" value="20">
+        <p class="help">Reduce muddy low-mid energy without boosting hiss.</p>
+      </div>
+      <div class="field">
+        <label for="polishPresence">Presence</label><output for="polishPresence">20%</output>
+        <input type="range" id="polishPresence" min="0" max="100" step="5" value="20">
+        <p class="help">Make vocals and instruments feel more forward. Excessive settings can sound harsh.</p>
+      </div>
+      <button class="chip polish-button" type="button" id="polishApply" disabled>Polish cleaned track</button>
+      <p class="group-note" id="polishStatus" role="status" aria-live="polite">Clean a track first.</p>
     </section>
 
     <div class="panel-foot">
@@ -175,20 +203,31 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
           </button>
         </div>
+        <div class="track" data-mode="polish">
+          <label>
+            <input type="radio" name="mode" value="polish" disabled>
+            <span class="tile tile-polish" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.1 7.9L22 12l-7.9 2.1L12 22l-2.1-7.9L2 12l7.9-2.1z"/></svg></span>
+            <span class="track-text"><span class="track-title">Polished</span><span class="track-meta" id="metaPolish">Apply Sound Polish after cleaning.</span></span>
+          </label>
+          <span class="track-key" aria-hidden="true">3</span>
+          <button class="icon-btn" id="dlPolish" type="button" aria-label="Download polished WAV" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+          </button>
+        </div>
         <div class="track" data-mode="removed">
           <label>
             <input type="radio" name="mode" value="removed" disabled>
             <span class="tile tile-removed" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></span>
             <span class="track-text"><span class="track-title">Removed</span><span class="track-meta">What was taken out. It should sound like hiss and grit, not melody.</span></span>
           </label>
-          <span class="track-key" aria-hidden="true">3</span>
+          <span class="track-key" aria-hidden="true">4</span>
           <button class="icon-btn" id="dlRemoved" type="button" aria-label="Download removed WAV" disabled>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
           </button>
         </div>
       </fieldset>
       <p class="edits-note" id="editsNote" hidden>Playback and downloads include your edits.</p>
-      <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1, 2 and 3 switch versions. The cleaned file has no EQ, compression, limiting or normalising added, so it is ready for your usual mastering.</p>
+      <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1, 2 and 3 switch versions. The Cleaned version is unmastered; Polished adds optional tone adjustment and sample-peak protection. The spectrogram still shows Cleaned when listening to Polished.</p>
 
       <section class="editor" aria-labelledby="editHead">
         <div class="list-head">
@@ -301,6 +340,7 @@
 <script src="wav.js"></script>
 <script src="engine.js"></script>
 <script src="edit.js"></script>
+<script src="polish.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
