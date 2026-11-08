@@ -60,6 +60,16 @@ Run \`node tests/dynamics_test.js\` for numerical compressor behavior, stereo li
 
 **Development status:** This feature is on a stacked draft branch based on unmerged v5a, pending review. Loudness measurement/optimization is a separate subsequent stage rather than silently added to the compressor.
 
+## Integrated loudness and optional normalization (v5c, development)
+
+Sound Polish now includes an optional **Loudness target** selector. By default it **measures only** and leaves the audio samples unchanged if other polish controls are off. Supported targets: **-18**, **-16**, or **-14 loudness units relative to full scale (LUFS)**. A target is a requested level, **not a guarantee**: the application caps positive boosts to +6 decibels, attenuation to -12 decibels, and protects sample peaks at or below 0.97 full scale. It applies *one uniform scalar gain to all channels*, not a limiter or compressor. Excessive peaks may prevent reaching a target. The status message reports measured achieved loudness and flags constrained targets.
+
+The browser-local meter uses a two-stage K-weighting filter and 400-millisecond blocks with 75% overlap, an absolute gate at -70 and a relative gate 10 loudness units below the preliminary average. It approximates **integrated programme loudness** according to International Telecommunication Union Recommendation BS.1770 and European Broadcasting Union R 128 for mono and stereo. It does not claim certified meter compliance, and a simple uniform-gain calculation for achieved loudness can differ very slightly when absolute gating changes. Comparison against the independent FFmpeg EBU R 128 filter is part of the automated test suite.
+
+**Limitations:** Tracks shorter than 400 milliseconds or layouts beyond stereo are not normalized and display an explanation; these inputs remain available for existing non-loudness processing. Peak safety is currently **sample-peak based, not true-peak based**, so inter-sample reconstruction overshoots are not explicitly constrained. This feature does not restore missing source quality, remove reverberation or guarantee streaming-platform loudness. It also cannot prevent clipping from later boosts added through section editing; inspect final edited exports separately. Original and Cleaned audio remain unchanged.
+
+Reference documents: [ITU-R BS.1770](https://www.itu.int/rec/R-REC-BS.1770) and [EBU R128](https://tech.ebu.ch/publications/r128). Tests: \`node tests/loudness_test.js\` (uses FFmpeg for independent reference), plus the earlier regression suite. This development is stacked on the unmerged dynamic-control branch; do not release before the base work is reviewed.
+
 ## Editing
 
 Under the versions list is a waveform of the song, split into sections. Edits never touch the audio itself: they are a list of which stretches play, in what order, at what volume and with what fades, so every step can be undone and the same edit applies to Original, Cleaned and Removed alike.
