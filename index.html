@@ -13,6 +13,7 @@
         section volume and fades, undo and redo, zoom. Playback and
         downloads follow the edits.
     v4  Local MP3 downloads alongside WAV, with progress and cancellation.
+    v5b Optional linked dynamic control as an additional Sound Polish setting.
     v5a Optional Sound Polish tone finishing with presets and a separate audio version.
 -->
 <html lang="en">
@@ -95,8 +96,8 @@
     </section>
 
     <section class="group" aria-labelledby="gPolish">
-      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5a</span></div>
-      <p class="group-note">Optional tone finishing after cleaning. Clarity reduces low-mid muddiness; presence lifts the upper mids. This is not reverb removal.</p>
+      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5b</span></div>
+      <p class="group-note">Optional sound finishing after cleaning. Tone controls reduce muddiness and improve presence; gentle dynamics can tame level variations. This is not reverb removal or loudness normalization.</p>
       <div class="field">
         <label for="polishPreset">Preset</label>
         <select id="polishPreset" class="polish-select">
@@ -116,6 +117,11 @@
         <label for="polishPresence">Presence</label><output for="polishPresence">20%</output>
         <input type="range" id="polishPresence" min="0" max="100" step="5" value="20">
         <p class="help">Make vocals and instruments feel more forward. Excessive settings can sound harsh.</p>
+      </div>
+      <div class="field">
+        <label for="polishDynamics">Dynamics</label><output for="polishDynamics">0%</output>
+        <input type="range" id="polishDynamics" min="0" max="100" step="5" value="0">
+        <p class="help">Gently smooth loud passages with stereo-linked compression. Off preserves the existing tone-only sound; no automatic loudness boost.</p>
       </div>
       <button class="chip polish-button" type="button" id="polishApply" disabled>Polish cleaned track</button>
       <p class="group-note" id="polishStatus" role="status" aria-live="polite">Clean a track first.</p>
@@ -227,7 +233,7 @@
         </div>
       </fieldset>
       <p class="edits-note" id="editsNote" hidden>Playback and downloads include your edits.</p>
-      <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1 = Original, 2 = Cleaned, 3 = Polished, 4 = Removed. The Cleaned version is unmastered; Polished adds optional tone adjustment and sample-peak protection. The spectrogram still shows Cleaned when listening to Polished.</p>
+      <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1 = Original, 2 = Cleaned, 3 = Polished, 4 = Removed. The Cleaned version is unmastered; Polished adds optional tone and dynamic control with sample-peak protection (not loudness normalization). The spectrogram still shows Cleaned when listening to Polished.</p>
 
       <section class="editor" aria-labelledby="editHead">
         <div class="list-head">
