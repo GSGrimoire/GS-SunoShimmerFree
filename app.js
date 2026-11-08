@@ -53,6 +53,7 @@
     specs: {}, top: 0, applied: null, worker: null, busy: false, mode: 'original', split: 50,
     offset: 0, playing: false, exportWorker: null,
     polishWorker: null, polishGeneration: 0, polishRevision: 0, modeChoiceVersion: 0,
+    sourceGeneration: 0, cleanGeneration: 0,
     polishing: false, polishApplied: null, polishGainDb: 0,
     segs: null, hist: [], fut: [], sel: null, sec: null, zoom: 1, peaks: {}, peakMax: {}
   };
@@ -242,6 +243,10 @@
   }
 
   function loadFile(file) {
+    // Each file read/decoder may resolve after a later source has been selected.
+    // Invalidate *all* previously scheduled continuations before changing UI state.
+    var sourceGen = ++st.sourceGeneration;
+    ++st.cleanGeneration;
     cancelExport();
     cancelPolish();
     hideError();
@@ -262,6 +267,7 @@
     showLoaded(); showBusy('Opening ' + file.name, 0);
 
     file.arrayBuffer().then(function (ab) {
+      if (sourceGen !== st.sourceGeneration) return null;
       var u8 = new Uint8Array(ab), isWav = u8.length > 12 && String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) === 'RIFF';
       if (isWav) {
         try {
@@ -281,6 +287,7 @@
         throw new Error('This browser could not decode ' + file.name + '. Convert it to WAV or MP3 and try again.');
       });
     }).then(function (d) {
+      if (sourceGen !== st.sourceGeneration || !d) return;
       st.sr = d.sr;
       st.buffers.original = makeBuffer(d.chans, d.sr);
       var b = st.buffers.original;
@@ -296,6 +303,8 @@
       refreshDirty();
       runProcess();
     }).catch(function (e) {
+      // Failure from an obsolete read/decode must not hide a newer load or its error.
+      if (sourceGen !== st.sourceGeneration) return;
       hideBusy();
       if (!st.buffers.original) showUpload();
       showError(e.message || String(e));
@@ -305,6 +314,8 @@
   // ---------------- processing ----------------
   function runProcess() {
     if (!st.buffers.original) return;
+    var sourceGen = st.sourceGeneration, cleanGen = ++st.cleanGeneration;
+    function isCurrent() { return sourceGen === st.sourceGeneration && cleanGen === st.cleanGeneration; }
     cancelExport();
     cancelPolish();
     if (st.mode === 'polish') setMode('clean');
@@ -318,13 +329,15 @@
     st.busy = true; refreshDirty(); refreshPolish(); showBusy('Reading the track', 0);
 
     var handlers = {
-      progress: function (f, stage) { showBusy(stage, f); },
+      progress: function (f, stage) { if (isCurrent()) showBusy(stage, f); },
       spectrogram: function (kind, spec) {
+        if (!isCurrent()) return;
         st.specs[kind] = spec;
         if (kind === 'original') st.top = topOf(spec.data);
         drawSpectra();
       },
       done: function (res) {
+        if (!isCurrent()) return;
         st.buffers.clean = makeBuffer(res.clean, sr);
         st.buffers.removed = makeBuffer(res.removed, sr);
         computePeaks('clean'); computePeaks('removed');
@@ -339,6 +352,7 @@
         if (st.playing) restartPlayback();
       },
       error: function (msg) {
+        if (!isCurrent()) return;
         st.busy = false; hideBusy(); refreshDirty(); refreshPolish();
         showError('Cleaning failed: ' + msg);
       }
@@ -346,9 +360,11 @@
 
     var started = false, w = null;
     function inline() {
+      if (!isCurrent()) return;
       // file:// pages cannot start workers; run on the page instead (it pauses while it works)
       showBusy('Cleaning on this page; it will pause until done', 0.02);
       setTimeout(function () {
+        if (!isCurrent()) return;
         try {
           var res = Engine.process(channelsOf(st.buffers.original, true), sr, params, { spectrogram: handlers.spectrogram });
           handlers.done(res);
@@ -359,15 +375,20 @@
     if (!w) { inline(); return; }
     st.worker = w;
     w.onmessage = function (e) {
+      if (!isCurrent() || st.worker !== w) return;
       var m = e.data; started = true;
       if (m.type === 'progress') handlers.progress(m.fraction, m.stage);
       else if (m.type === 'spectrogram') handlers.spectrogram(m.kind, m.spec);
-      else if (m.type === 'done') { handlers.done(m); w.terminate(); if (st.worker === w) st.worker = null; }
-      else if (m.type === 'error') { handlers.error(m.message); w.terminate(); }
+      else if (m.type === 'done' || m.type === 'error') {
+        w.terminate(); st.worker = null;
+        if (m.type === 'done') handlers.done(m);
+        else handlers.error(m.message || 'Unknown worker error');
+      }
     };
     w.onerror = function (e) {
       e.preventDefault();
-      if (st.worker === w) st.worker = null;
+      if (!isCurrent() || st.worker !== w) return;
+      st.worker = null;
       w.terminate();
       if (!started) inline(); else handlers.error(e.message || 'the worker stopped');
     };
