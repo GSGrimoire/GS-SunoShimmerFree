@@ -15,7 +15,7 @@ const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
 const modes = ['original', 'clean', 'polish', 'removed'];
 
 function harness() {
-  const workers = [], downloads = [], nodes = new Map();
+  const workers = [], downloads = [], wavCaptures = [], nodes = new Map();
   const noOp = () => {};
   const gradient = { addColorStop: noOp };
   const canvasContext = {
@@ -105,10 +105,16 @@ function harness() {
   const source = new Float32Array(48000);
   for (let i = 0; i < source.length; i++) source[i] = 0.15 * Math.sin(i * 0.04);
   const wav = {
-    decodeWav: () => ({
-      channels: [source.slice(), source.slice()], sampleRate: 48000, bits: 16, float: false
-    }),
-    encodeWav: () => new Uint8Array([82, 73, 70, 70]).buffer
+    decodeWav: ab => {
+      const bytes = new Uint8Array(ab), marker = bytes[4];
+      const input = marker === 70 || marker === 10 ?
+        Float32Array.from({ length: source.length }, () => marker / 100) : source.slice();
+      return { channels: [input.slice(), input.slice()], sampleRate: 48000, bits: 16, float: false };
+    },
+    encodeWav: channels => {
+      wavCaptures.push(channels.map(c => c[0]));
+      return new Uint8Array([82, 73, 70, 70]).buffer;
+    }
   };
   const Engine = {
     VERSION: '1', DEFAULTS: { denoise: true, denoiseStrength: 1,
@@ -129,8 +135,9 @@ function harness() {
   function cleanDone() {
     const w = last('worker.js');
     assert(w && w.messages.length, 'cleaning worker started');
-    w.emit({ type: 'done', clean: [source.slice(), source.slice()],
-      removed: [new Float32Array(source.length), new Float32Array(source.length)],
+    const input = w.messages.at(-1).channels;
+    w.emit({ type: 'done', clean: input.map(c => c.slice()),
+      removed: input.map(c => new Float32Array(c.length)),
       report: { text: 'Synthetic clean' } });
   }
   function polishDone() {
@@ -154,7 +161,7 @@ function harness() {
     cleanDone();
     assert.equal(el('polishApply').disabled, false, 'Polish ready after clean');
   }
-  return { el, workers, downloads, last, open, preset, choose, cleanDone, polishDone,
+  return { el, workers, downloads, wavCaptures, last, open, preset, choose, cleanDone, polishDone,
     radio, window, source };
 }
 async function testExportRace() {
@@ -244,11 +251,86 @@ async function testExportsAndReplacement() {
   assert.equal(h.el('dlPolish').disabled, true, 'old worker result cannot restore Polished for replaced source');
   await new Promise(resolve => setImmediate(resolve));
 }
+
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+function riff(marker) {
+  const a = new Uint8Array(32);
+  a.set([82, 73, 70, 70], 0); a[4] = marker || 0;
+  return a.buffer;
+}
+async function flush() {
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+}
+async function testOverlappingSourceReadsAndWorkers() {
+  const h = harness();
+  const slowA = deferred();
+  h.el('file').files = [{ name: 'Source-A.wav', arrayBuffer: () => slowA.promise }];
+  h.el('file').fire('change');
+  h.el('file').files = [{ name: 'Source-B.wav', arrayBuffer: async () => riff(70) }];
+  h.el('file').fire('change');
+  await flush();
+  const b = h.last('worker.js');
+  assert(b && b.messages.length, 'B cleaning worker starts before A read completes');
+  assert(Math.abs(b.messages[0].channels[0][0] - 0.7) < 1e-6, 'B worker receives B samples');
+  const count = h.workers.length;
+  slowA.resolve(riff(10));
+  await flush();
+  assert.equal(h.workers.length, count, 'late A read must not launch another worker');
+  assert.equal(b.terminated, false, 'late A read must not cancel B worker');
+  assert.equal(h.el('songTitle').textContent, 'Source-B', 'B title remains active');
+  h.cleanDone();
+  h.el('dlClean').fire('click');
+  assert(Math.abs(h.wavCaptures.at(-1)[0] - 0.7) < 1e-6,
+    'downloaded Cleaned samples correspond to Source-B, not late Source-A');
+
+  // A terminated cleaning worker may still have a queued event in flight.
+  const slowC = deferred();
+  h.el('file').files = [{ name: 'Source-C.wav', arrayBuffer: () => slowC.promise }];
+  h.el('file').fire('change');
+  assert.equal(b.terminated, true, 'B worker is terminated on C selection');
+  b.emit({ type: 'done', clean: [Float32Array.of(0.7), Float32Array.of(0.7)],
+    removed: [Float32Array.of(0), Float32Array.of(0)], report: { text: 'stale' } });
+  b.emit({ type: 'error', message: 'Old worker failed' });
+  b.emit({ type: 'progress', fraction: 1, stage: 'Old worker progress' });
+  assert.equal(h.el('songTitle').textContent, 'Source-C', 'stale worker cannot change source');
+  assert.equal(h.el('error').hidden, true, 'stale worker error ignored');
+  assert.equal(h.el('busyText').textContent, 'Opening Source-C.wav',
+    'stale worker progress cannot obscure current load');
+  slowC.resolve(riff(10));
+  await flush();
+  const c = h.last('worker.js');
+  assert.notEqual(c, b);
+  assert(Math.abs(c.messages[0].channels[0][0] - 0.1) < 1e-6,
+    'C worker receives C samples');
+  h.cleanDone();
+  h.el('dlClean').fire('click');
+  assert(Math.abs(h.wavCaptures.at(-1)[0] - 0.1) < 1e-6,
+    'current export corresponds to Source-C');
+
+  const slowD = deferred();
+  h.el('file').files = [{ name: 'Source-D.wav', arrayBuffer: () => slowD.promise }];
+  h.el('file').fire('change');
+  h.el('file').files = [{ name: 'Source-E.wav', arrayBuffer: async () => riff(70) }];
+  h.el('file').fire('change');
+  await flush();
+  slowD.reject(new Error('Old read error'));
+  await flush();
+  assert.equal(h.el('songTitle').textContent, 'Source-E');
+  assert.equal(h.el('error').hidden, true, 'late A/D failure must not show error on newer source');
+  assert.equal(h.el('busy').hidden, false, 'obsolete read failure must not hide current busy indicator');
+}
+
 (async () => {
+  await testOverlappingSourceReadsAndWorkers();
   await testExportRace();
   await testModeChoice(false);
   await testModeChoice(true);
   await testRecleanTransitions();
   await testExportsAndReplacement();
-  console.log('PASS: actual app.js export race, stale callback, mode choice, re-clean states, WAV/MP3 edits, replacement.');
+  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, cleaning transitions, edits and replacement.');
 })().catch(err => { console.error(err); process.exitCode = 1; });
