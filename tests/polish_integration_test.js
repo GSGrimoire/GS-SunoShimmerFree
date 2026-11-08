@@ -124,6 +124,7 @@ function harness() {
   const window = { ShimmerEngine: Engine, ShimmerEdit: Ed, WavCodec: wav,
     SunoPolish: Polish, AudioContext, addEventListener: noOp, devicePixelRatio: 1 };
   el('bits').value = '24';
+  el('polishTarget').value = 'off';
   el('loaded').hidden = true;
   el('transport').hidden = true;
   el('denoise').checked = true;
@@ -266,6 +267,25 @@ async function flush() {
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setImmediate(resolve));
 }
+async function testLoudnessPresetAndExport() {
+  const h = harness(); await h.open();
+  h.el('polishTarget').value = '-18';
+  h.el('polishTarget').fire('change');
+  assert.equal(h.el('polishPreset').value, 'custom',
+    'loudness change creates a Custom preset');
+  h.el('polishApply').fire('click');
+  const job = h.last('polish-worker.js').messages.at(-1);
+  assert.equal(job.params.targetLufs, -18, 'loudness target sent to processing worker');
+  h.polishDone();
+  assert(h.el('metaPolish').textContent.includes('-18 LUFS target'),
+    'desired target shown in Polished metadata');
+  assert.equal(h.el('dlPolish').disabled, false);
+  h.el('polishTarget').value = '-16';
+  h.el('polishTarget').fire('change');
+  assert.equal(h.el('dlPolish').disabled, true,
+    'changing target invalidates outdated Polished download');
+}
+
 async function testDynamicsPresetAndExport() {
   const h = harness(); await h.open();
   h.preset('clear');
@@ -350,10 +370,11 @@ async function testOverlappingSourceReadsAndWorkers() {
 (async () => {
   await testOverlappingSourceReadsAndWorkers();
   await testDynamicsPresetAndExport();
+  await testLoudnessPresetAndExport();
   await testExportRace();
   await testModeChoice(false);
   await testModeChoice(true);
   await testRecleanTransitions();
   await testExportsAndReplacement();
-  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, dynamics, cleaning transitions, edits and replacement.');
+  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, dynamics, loudness targets, cleaning transitions, edits and replacement.');
 })().catch(err => { console.error(err); process.exitCode = 1; });
