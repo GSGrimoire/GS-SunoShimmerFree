@@ -129,6 +129,7 @@
       setFill(el);
     });
     var ready = !!st.buffers.clean && !st.busy;
+    var timelineEdited = !!(st.segs && st.n && !Ed.isPristine(st.segs, st.n));
     var changed = !sameParams(readPolishParams(), st.polishApplied);
     $('polishApply').disabled = !ready || st.polishing || (!changed && !!st.buffers.polish);
     $('polishApply').textContent = st.polishing ? 'Polishing...' :
@@ -137,7 +138,8 @@
       !ready ? 'Clean a track first.' :
       st.buffers.polish && changed ? 'Settings changed. Reapply to hear the difference.' :
       st.buffers.polish ? 'Polished version ready.' +
-        (st.polishLoudness !== null ? ' Measured ' + st.polishLoudness.toFixed(1) + ' LUFS.' : '') +
+        (st.polishLoudness !== null ? ' Measured before timeline edits: ' + st.polishLoudness.toFixed(1) + ' LUFS.' : '') +
+        (timelineEdited ? ' Timeline edits can change exported loudness and may clip; peak protection applies before edits.' : '') +
         (st.polishLimited ? ' Target not fully reached due to gain or peak limits.' : '') +
         (st.polishLoudnessMessage ? ' ' + st.polishLoudnessMessage : '') +
         (st.polishReductionDb > 0.05 ? ' Dynamics reduced up to ' + st.polishReductionDb.toFixed(1) + ' dB.' : '') +
@@ -558,6 +560,9 @@
     }
     var edited = !Ed.isPristine(st.segs, st.n);
     $('editsNote').hidden = !edited;
+    // Loudness is measured on the unedited Polished buffer; relabel the
+    // displayed measurement whenever timeline edits become active or are reset.
+    refreshPolish();
     $('edUndo').disabled = !st.hist.length; $('edRedo').disabled = !st.fut.length;
     $('edReset').disabled = !edited;
     shadeCuts(); refreshTools(); refreshInspector(); sizeWave(); drawWave(); tick();
