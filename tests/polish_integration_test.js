@@ -146,7 +146,10 @@ function harness() {
     assert(w && w.messages.length, 'polish worker started');
     const job = w.messages.at(-1);
     const p = Polish.process(job.channels, job.sampleRate, job.params);
-    w.emit({ type: 'done', channels: p.channels, safetyGainDb: p.safetyGainDb });
+    w.emit({ type: 'done', channels: p.channels, safetyGainDb: p.safetyGainDb,
+      dynamicMaxReductionDb: p.dynamicMaxReductionDb,
+      loudnessAfter: p.loudnessAfter, loudnessBefore: p.loudnessBefore,
+      normalizationLimited: p.normalizationLimited, loudnessMessage: p.loudnessMessage });
   }
   function choose(mode) { radio[mode].checked = true; radio[mode].fire('change'); }
   function preset(name) { el('polishPreset').value = name; el('polishPreset').fire('change'); }
@@ -267,6 +270,31 @@ async function flush() {
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setImmediate(resolve));
 }
+async function testPreEditLoudnessLabel() {
+  const h = harness(); await h.open();
+  h.el('polishApply').fire('click'); h.polishDone();
+  const baseStatus = h.el('polishStatus').textContent;
+  assert(baseStatus.includes('Measured before timeline edits:'),
+    'measured LUFS must be explicitly identified as pre-edit');
+  assert(!baseStatus.includes('Timeline edits can change exported loudness'),
+    'unedited track must not claim edits exist');
+
+  h.el('seek').value = '500';
+  h.el('seek').fire('input');
+  h.el('edSplit').fire('click');
+  const editedStatus = h.el('polishStatus').textContent;
+  assert(editedStatus.includes('Measured before timeline edits:'),
+    'post-edit status must not relabel the pre-edit meter as final loudness');
+  assert(editedStatus.includes('Timeline edits can change exported loudness and may clip'),
+    'after timeline edits show export-loudness and clipping warning');
+  assert(editedStatus.includes('peak protection applies before edits'),
+    'make peak protection boundary explicit');
+
+  h.el('edReset').fire('click');
+  assert(!h.el('polishStatus').textContent.includes('Timeline edits can change exported loudness'),
+    'resetting edits must remove the edit-specific warning');
+}
+
 async function testLoudnessPresetAndExport() {
   const h = harness(); await h.open();
   h.el('polishTarget').value = '-18';
@@ -371,6 +399,7 @@ async function testOverlappingSourceReadsAndWorkers() {
   await testOverlappingSourceReadsAndWorkers();
   await testDynamicsPresetAndExport();
   await testLoudnessPresetAndExport();
+  await testPreEditLoudnessLabel();
   await testExportRace();
   await testModeChoice(false);
   await testModeChoice(true);
