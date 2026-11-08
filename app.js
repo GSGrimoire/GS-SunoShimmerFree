@@ -25,10 +25,11 @@
  *       edits; removed stretches are shaded on the spectrogram.
  *   v4  Local MP3 export with quality choices, progress and cancellation.
  *   v5a Optional Sound Polish clarity/presence with presets and a separate version.
+ *   v5b Optional linked dynamic control within the same Polished version.
  */
 (function () {
   'use strict';
-  var PAGE_VERSION = '5a';
+  var PAGE_VERSION = '5b';
   var Engine = window.ShimmerEngine, Wav = window.WavCodec, Ed = window.ShimmerEdit, Polish = window.SunoPolish;
   var $ = function (id) { return document.getElementById(id); };
   var PARAMS = ['denoiseStrength', 'maxAttenDb', 'bassHz', 'quietPct', 'shimmer', 'shimmerMaxDb', 'shimmerFromHz'];
@@ -54,7 +55,7 @@
     offset: 0, playing: false, exportWorker: null,
     polishWorker: null, polishGeneration: 0, polishRevision: 0, modeChoiceVersion: 0,
     sourceGeneration: 0, cleanGeneration: 0,
-    polishing: false, polishApplied: null, polishGainDb: 0,
+    polishing: false, polishApplied: null, polishGainDb: 0, polishReductionDb: 0,
     segs: null, hist: [], fut: [], sel: null, sec: null, zoom: 1, peaks: {}, peakMax: {}
   };
 
@@ -105,7 +106,8 @@
 
   // ---------------- optional Sound Polish ----------------
   function readPolishParams() {
-    return Polish.settings({ clarity: Number($('polishClarity').value), presence: Number($('polishPresence').value) });
+    return Polish.settings({ clarity: Number($('polishClarity').value), presence: Number($('polishPresence').value),
+      dynamics: Number($('polishDynamics').value) });
   }
   function setPolishPreset(name) {
     var p = Polish.PRESETS[name];
@@ -113,10 +115,11 @@
     $('polishPreset').value = name;
     $('polishClarity').value = p.clarity;
     $('polishPresence').value = p.presence;
+    $('polishDynamics').value = p.dynamics;
     refreshPolish(); refreshDownloadControls();
   }
   function refreshPolish() {
-    ['polishClarity', 'polishPresence'].forEach(function (id) {
+    ['polishClarity', 'polishPresence', 'polishDynamics'].forEach(function (id) {
       var el = $(id);
       el.parentNode.querySelector('output').textContent = Number(el.value) + '%';
       setFill(el);
@@ -130,6 +133,7 @@
       !ready ? 'Clean a track first.' :
       st.buffers.polish && changed ? 'Settings changed. Reapply to hear the difference.' :
       st.buffers.polish ? 'Polished version ready.' +
+        (st.polishReductionDb > 0.05 ? ' Dynamics reduced up to ' + st.polishReductionDb.toFixed(1) + ' dB.' : '') +
         (st.polishGainDb < -0.01 ? ' Peak protection: ' + st.polishGainDb.toFixed(1) + ' dB.' : '') :
       'Choose a preset, then create a separate Polished version.';
   }
@@ -159,8 +163,10 @@
       computePeaks('polish');
       st.polishApplied = params;
       st.polishGainDb = res.safetyGainDb;
+      st.polishReductionDb = res.dynamicMaxReductionDb || 0;
       st.polishing = false;
-      $('metaPolish').textContent = 'Clarity ' + params.clarity + '%, presence ' + params.presence + '%';
+      $('metaPolish').textContent = 'Clarity ' + params.clarity + '%, presence ' + params.presence +
+        '%, dynamics ' + params.dynamics + '%';
       setModeAvailability(true);
       // Respect user listening choices made while the worker was running.
       if (st.modeChoiceVersion === initialModeChoice) setMode('polish');
@@ -1071,7 +1077,7 @@
     $('apply').addEventListener('click', runProcess);
     $('reset').addEventListener('click', function () { writeParams(Engine.DEFAULTS); });
     $('polishPreset').addEventListener('change', function () { setPolishPreset(this.value); });
-    ['polishClarity', 'polishPresence'].forEach(function (id) {
+    ['polishClarity', 'polishPresence', 'polishDynamics'].forEach(function (id) {
       $(id).addEventListener('input', function () {
         $('polishPreset').value = 'custom'; refreshPolish(); refreshDownloadControls();
       });

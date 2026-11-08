@@ -48,6 +48,18 @@ node tests/polish_test.js
 
 Development roadmap and agreed scope: [Sound Polish, quality assistant, and stems](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/2). Next: gentle dynamic control, measured loudness and safe optimization, then transient enhancement. Future stem-aware workflows are exploratory.
 
+## Sound Polish dynamic control (v5b, development)
+
+The next optional stage extends the **Polished** version with a **Dynamics** slider. At 0%, dynamics processing is bypassed; Natural retains 0%, while Clear, Warm and Forward include modest preconfigured amounts. A 100% setting is the highest supported compression, not an automatic recommendation.
+
+The linked compressor uses a smoothed root-mean-square envelope across channels, a soft knee, approximately 25-millisecond attack and 220-millisecond release. It applies the **same instantaneous gain** to all channels, avoiding stereo balance shifts. The threshold varies between approximately -12 and -16 decibels relative to full scale; the compression ratio varies between 1:1 and 1.8:1. This is intentionally a gentle *level-smoothing* control, not transient enhancement or dereverberation. There is no automatic makeup gain. The existing peak-safety adjustment remains in place and the input audio is not overwritten.
+
+Use the existing Polished playback and WAV or MP3 download row. You must click **Polish again** after changing settings; downloads of a Polished version with mismatched controls are disabled. Dynamic control should be evaluated through level-matched listening, rather than by treating quieter output as worse or louder output as better.
+
+Run \`node tests/dynamics_test.js\` for numerical compressor behavior, stereo linkage, transients, bypass, and finite values. The application integration and existing format regression suites remain required.
+
+**Development status:** This feature is on a stacked draft branch based on unmerged v5a, pending review. Loudness measurement/optimization is a separate subsequent stage rather than silently added to the compressor.
+
 ## Editing
 
 Under the versions list is a waveform of the song, split into sections. Edits never touch the audio itself: they are a list of which stretches play, in what order, at what volume and with what fades, so every step can be undone and the same edit applies to Original, Cleaned and Removed alike.
