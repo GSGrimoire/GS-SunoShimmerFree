@@ -266,6 +266,28 @@ async function flush() {
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setImmediate(resolve));
 }
+async function testDynamicsPresetAndExport() {
+  const h = harness(); await h.open();
+  h.preset('clear');
+  assert.equal(Number(h.el('polishDynamics').value), 15, 'Clear preset includes gentle compression');
+  h.el('polishDynamics').value = '65';
+  h.el('polishDynamics').fire('input');
+  assert.equal(h.el('polishPreset').value, 'custom', 'changing dynamics makes a Custom preset');
+  h.el('polishApply').fire('click');
+  const worker = h.last('polish-worker.js');
+  assert.equal(worker.messages[0].params.dynamics, 65, 'dynamics amount sent to worker');
+  h.polishDone();
+  assert.equal(h.el('dlPolish').disabled, false, 'dynamic Polished version downloadable');
+  assert(h.el('metaPolish').textContent.includes('dynamics 65%'),
+    'applied dynamics amount disclosed beside output');
+  h.el('dlPolish').fire('click');
+  assert.deepEqual(h.downloads, ['Synthetic - Polished.wav']);
+  h.el('polishDynamics').value = '20';
+  h.el('polishDynamics').fire('input');
+  assert.equal(h.el('dlPolish').disabled, true,
+    'changing dynamics disables stale Polished export until re-applied');
+}
+
 async function testOverlappingSourceReadsAndWorkers() {
   const h = harness();
   const slowA = deferred();
@@ -327,10 +349,11 @@ async function testOverlappingSourceReadsAndWorkers() {
 
 (async () => {
   await testOverlappingSourceReadsAndWorkers();
+  await testDynamicsPresetAndExport();
   await testExportRace();
   await testModeChoice(false);
   await testModeChoice(true);
   await testRecleanTransitions();
   await testExportsAndReplacement();
-  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, cleaning transitions, edits and replacement.');
+  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, dynamics, cleaning transitions, edits and replacement.');
 })().catch(err => { console.error(err); process.exitCode = 1; });
