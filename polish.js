@@ -38,7 +38,7 @@
   function compressLinked(output, sampleRate, amountPct) {
     if (amountPct <= 0) return 0;
     var strength = amountPct / 100;
-    var thresholdDb = -14 - 8 * strength, ratio = 1 + 1.5 * strength;
+    var thresholdDb = -12 - 4 * strength, ratio = 1 + 0.8 * strength;
     var kneeDb = 6, slope = 1 / ratio - 1;
     var attack = Math.exp(-1 / (sampleRate * 0.025));
     var release = Math.exp(-1 / (sampleRate * 0.220));
