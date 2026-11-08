@@ -83,7 +83,9 @@
       if (!channels[c] || channels[c].length !== n) throw new Error('Audio channels have different lengths.');
     }
     var toneActive = p.clarity > 0 || p.presence > 0;
-    var active = toneActive || p.dynamics > 0 || p.targetLufs !== null, output = [];
+    // A requested loudness target is not itself a signal operation: unsupported
+    // short/multichannel audio must stay bit-identical when tone/dynamics are off.
+    var active = toneActive || p.dynamics > 0, output = [];
     var eq = [
       bell(sampleRate, 320, 0.80, -3 * p.clarity / 100),
       bell(sampleRate, 2500, 0.90, 2.5 * p.presence / 100)
@@ -123,7 +125,8 @@
     var meter = Loudness ? Loudness.measure(output, sampleRate) :
       { valid: false, lufs: null, peak: peak, reason: 'Loudness meter unavailable.' };
     var normalizationGainDb = 0, limited = false;
-    if (p.targetLufs !== null && meter.valid && peak > 0) {
+    var normalizationEligible = p.targetLufs !== null && meter.valid && peak > 0;
+    if (normalizationEligible) {
       var desiredDb = p.targetLufs - meter.lufs;
       var boundedDb = Math.max(-12, Math.min(6, desiredDb));
       var desiredGain = Math.pow(10, boundedDb / 20);
@@ -138,21 +141,30 @@
       normalizationGainDb = 20 * Math.log10(safeGain);
       limited = Math.abs(normalizationGainDb - desiredDb) > 0.15;
     }
-    // Existing safety attenuation, linked between all channels. This is
-    // intentional even if the normalization target cannot be attained.
-    var gain = active && peak > 0.97 ? 0.97 / peak : 1;
+    // Sample peak protection belongs to processing that actually happened.
+    // A target-only request rejected by the meter must remain a true bypass.
+    var gain = (active || normalizationEligible) && peak > 0.97 ? 0.97 / peak : 1;
     if (gain < 1) {
       for (var c = 0; c < output.length; c++) {
         for (var j = 0; j < n; j++) output[c][j] *= gain;
       }
     }
     var safetyDb = gain < 1 ? 20 * Math.log10(gain) : 0;
-    if (p.targetLufs !== null && !meter.valid) limited = true;
+    // An absolute gate is not gain-invariant. If gain changes, the set of
+    // counted blocks may change, so measure final samples instead of adding dB.
+    var outputMeter = meter;
+    if (Loudness && meter.valid && (Math.abs(normalizationGainDb) > 1e-9 || gain < 1)) {
+      outputMeter = Loudness.measure(output, sampleRate);
+    }
+    if (p.targetLufs !== null) {
+      if (!meter.valid || !outputMeter.valid) limited = true;
+      else if (Math.abs(outputMeter.lufs - p.targetLufs) > 0.25) limited = true;
+    }
     return { channels: output, settings: p, peak: peak * gain,
       dynamicMaxReductionDb: maxReductionDb,
       loudnessBefore: meter.valid ? meter.lufs : null,
-      loudnessAfter: meter.valid ? meter.lufs + normalizationGainDb + safetyDb : null,
-      loudnessMessage: meter.valid ? null : meter.reason,
+      loudnessAfter: outputMeter.valid ? outputMeter.lufs : null,
+      loudnessMessage: outputMeter.valid ? null : outputMeter.reason,
       normalizationGainDb: normalizationGainDb, normalizationLimited: limited,
       safetyGainDb: safetyDb };
   }
