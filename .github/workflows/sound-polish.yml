@@ -1,0 +1,68 @@
+name: Sound Polish checks
+
+on:
+  push:
+    paths:
+      - 'polish.js'
+      - 'polish-worker.js'
+      - 'app.js'
+      - 'index.html'
+      - 'style.css'
+      - 'edit.js'
+      - 'wav.js'
+      - 'export-worker.js'
+      - 'mp3.js'
+      - 'cli.js'
+      - 'engine.js'
+      - 'worker.js'
+      - 'vendor/**'
+      - 'tests/mp3_test.js'
+      - 'tests/edit_test.js'
+      - 'tests/polish_test.js'
+      - 'tests/polish_integration_test.js'
+      - '.github/workflows/sound-polish.yml'
+  pull_request:
+    paths:
+      - 'polish.js'
+      - 'polish-worker.js'
+      - 'app.js'
+      - 'index.html'
+      - 'style.css'
+      - 'edit.js'
+      - 'wav.js'
+      - 'export-worker.js'
+      - 'mp3.js'
+      - 'cli.js'
+      - 'engine.js'
+      - 'worker.js'
+      - 'vendor/**'
+      - 'tests/mp3_test.js'
+      - 'tests/edit_test.js'
+      - 'tests/polish_test.js'
+      - 'tests/polish_integration_test.js'
+      - '.github/workflows/sound-polish.yml'
+
+jobs:
+  sound-polish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test tone processing and peak safety
+        run: node tests/polish_test.js
+      - name: Test browser-state integration and export races
+        run: node tests/polish_integration_test.js
+      - name: Install FFmpeg for independent codec validation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - name: Test WAV/MP3 encoders and command line regression
+        run: node tests/mp3_test.js
+      - name: Test editor regression against synthetic WAV
+        run: |
+          node -e 'const fs=require("fs"),w=require("./wav.js"),s=48000,n=s*5,a=Array.from({length:2},(_,c)=>Float32Array.from({length:n},(_,i)=>.2*Math.sin(2*Math.PI*(240+c*190)*i/s)));fs.writeFileSync("/tmp/ssf-edit-fixture.wav",Buffer.from(w.encodeWav(a,s,24)))'
+          node tests/edit_test.js /tmp/ssf-edit-fixture.wav /tmp/ssf-edit-test-outputs
