@@ -102,6 +102,8 @@ async function flush(){
   assert.equal(h.audios.length,1,'mixed audio compiled');
   assert(Math.abs(h.audios[0].getChannelData(0)[2]-.5)<1e-6,'mix sums two enabled stems without normalizing');
   assert.equal(h.el('stemExport').disabled,false);
+  // The synthetic document does not parse select option defaults.
+  h.el('stemBits').value='32';
   h.el('stemExport').fire('click');
   assert(h.downloaded[0].endsWith('.wav'),'local WAV export');
 
