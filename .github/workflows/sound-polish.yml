@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'polish.js'
+      - 'transient.js'
       - 'loudness.js'
       - 'polish-worker.js'
       - 'app.js'
@@ -21,12 +22,14 @@ on:
       - 'tests/edit_test.js'
       - 'tests/polish_test.js'
       - 'tests/dynamics_test.js'
+      - 'tests/transient_test.js'
       - 'tests/loudness_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
   pull_request:
     paths:
       - 'polish.js'
+      - 'transient.js'
       - 'loudness.js'
       - 'polish-worker.js'
       - 'app.js'
@@ -44,6 +47,7 @@ on:
       - 'tests/edit_test.js'
       - 'tests/polish_test.js'
       - 'tests/dynamics_test.js'
+      - 'tests/transient_test.js'
       - 'tests/loudness_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
@@ -62,6 +66,8 @@ jobs:
         run: node tests/polish_test.js
       - name: Test linked dynamics, bypass and peak safety
         run: node tests/dynamics_test.js
+      - name: Test gated transient enhancement and high-frequency restraint
+        run: node tests/transient_test.js
       - name: Test browser-state integration and export races
         run: node tests/polish_integration_test.js
       - name: Install FFmpeg for independent codec validation
