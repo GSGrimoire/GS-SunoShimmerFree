@@ -1,0 +1,49 @@
+/* Standalone stem workspace skin. Existing single-track page remains unchanged. */
+.stem-workspace[hidden] { display: none !important; }
+.stem-workspace { position: fixed; inset: 0; z-index: 1500; overflow: auto; background: rgba(10,10,14,.94); color: #f5f3f8; padding: 16px; }
+.stem-panel { max-width: 1160px; margin: 0 auto; background: #1a1922; border: 1px solid #554b67; border-radius: 18px; padding: clamp(14px,3vw,28px); box-shadow: 0 15px 50px #0008; }
+.stem-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; border-bottom: 1px solid #484050; padding-bottom: 12px; }
+.stem-head h2 { margin: 0 0 5px; font-size: 1.7rem; }
+.stem-head p { margin: 0; color: #c3bcd0; }
+.stem-head-buttons { display:flex; gap: 7px; flex-wrap: wrap; }
+.stem-workspace button, .stem-workspace select, .stem-workspace input { font: inherit; }
+.stem-workspace button { cursor: pointer; padding: 8px 12px; border: 1px solid #806c9e; border-radius: 8px; background: #372c49; color: #f9f3ff; }
+.stem-workspace button:hover:not(:disabled) { background: #55406e; }
+.stem-workspace button:focus-visible, .stem-workspace input:focus-visible, .stem-workspace select:focus-visible { outline: 2px solid #cfa9ff; outline-offset: 2px; }
+.stem-workspace button:disabled { opacity: .5; cursor: not-allowed; }
+#stemStatus { margin: 16px 0 8px; font-weight: 600; }
+.stem-error { color: #ffafbd; }
+.stem-note { font-size: .86rem; line-height: 1.5; color: #cbc4d6; }
+.stem-allow { display: flex; gap: 8px; align-items: start; margin: 16px 0; font-size: .91rem; }
+.stem-toolbar, .stem-build, .stem-playback { display:flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 15px 0; }
+.stem-build { border-top: 1px solid #484050; padding-top: 14px; }
+.stem-list { display: grid; gap: 12px; }
+.stem-card { background: #25222e; border: 1px solid #554b67; border-radius: 11px; padding: 14px; }
+.stem-top { display: flex; justify-content: space-between; align-items: start; gap: 14px; margin-bottom: 14px; }
+.stem-title { display:flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.stem-title strong { font-size: 1rem; color: #fff; }
+.stem-title small { font-size: .75rem; color: #bab0c9; margin-top: 3px; }
+.stem-controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; }
+.stem-check { white-space: nowrap; font-size: .87rem; }
+.stem-workspace input[type="checkbox"] { accent-color: #b882f8; }
+.stem-volume { display: flex; align-items: center; gap: 8px; font-size: .84rem; min-width: 220px; flex: 1; }
+.stem-volume input { flex: 1; min-width: 100px; accent-color: #b882f8; }
+.stem-card details { margin-top: 13px; border-top: 1px solid #50445d; padding-top: 10px; }
+.stem-card summary { cursor: pointer; color: #dac4f5; }
+.stem-params { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); margin-top: 13px; }
+.stem-field { display:flex; flex-direction: column; gap: 8px; font-size: .88rem; }
+.stem-field input[type="range"] { width: 100%; accent-color: #b882f8; }
+.stem-field select, .stem-build select { border-radius: 6px; padding: 7px; color: #fff; background: #272236; border: 1px solid #76658f; }
+.stem-playback input[type="range"] { flex: 1; min-width: 170px; accent-color: #b882f8; }
+#stemTime { font-variant-numeric: tabular-nums; }
+body.has-stem-workspace { overflow: hidden; }
+.stem-nav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 620px) {
+  .stem-workspace { padding: 0; }
+  .stem-panel { border-radius: 0; min-height: 100%; }
+  .stem-head { flex-direction: column; }
+  .stem-volume { flex-basis: 100%; }
+  .stem-playback { align-items: start; }
+  .stem-playback label { width: 100%; }
+  .stem-nav .pill { font-size: .72rem; }
+}
