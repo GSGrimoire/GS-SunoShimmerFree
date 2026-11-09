@@ -270,6 +270,23 @@ async function flush() {
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setImmediate(resolve));
 }
+async function testLiveLoudnessWarningOnSliderInput() {
+  const h = harness(); await h.open();
+  h.el('polishApply').fire('click'); h.polishDone();
+  assert(!h.el('polishStatus').textContent.includes('Timeline edits can change'),
+    'pristine status has no editing warning');
+  h.el('secGain').value = '6';
+  h.el('secGain').fire('input');
+  assert(h.el('polishStatus').textContent.includes('Timeline edits can change exported loudness'),
+    'warning updates during the slider gesture, before change is committed');
+  h.el('secGain').fire('change');
+  assert(h.el('polishStatus').textContent.includes('peak protection applies before edits'),
+    'committed slider retains clipping warning');
+  h.el('edUndo').fire('click');
+  assert(!h.el('polishStatus').textContent.includes('Timeline edits can change'),
+    'undo removes live warning when timeline becomes pristine');
+}
+
 async function testPreEditLoudnessLabel() {
   const h = harness(); await h.open();
   h.el('polishApply').fire('click'); h.polishDone();
@@ -400,6 +417,7 @@ async function testOverlappingSourceReadsAndWorkers() {
   await testDynamicsPresetAndExport();
   await testLoudnessPresetAndExport();
   await testPreEditLoudnessLabel();
+  await testLiveLoudnessWarningOnSliderInput();
   await testExportRace();
   await testModeChoice(false);
   await testModeChoice(true);
