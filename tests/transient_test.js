@@ -67,7 +67,7 @@ assert.equal(Polish.settings({ transients: NaN }).transients, 0);
 assert.equal(Polish.PRESETS.natural.transients, 0);
 assert(Polish.PRESETS.punchy.transients > 0);
 assert.throws(() => Transient.processInPlace([Float32Array.of(NaN)], sr, 10), /non-finite/);
-assert.throws(() => Transient.processInPlace([Float32Array.of(0), new Float32Array(2)], sr, 10), /different/);
+assert.throws(() => Transient.processInPlace([Float32Array.of(0), new Float32Array(2)], sr, 10), /differ/);
 for (const sampleRate of [8000, 11025, 44100, 48000, 96000, 192000, 384000]) {
   const input = Float32Array.from({ length: Math.floor(sampleRate / 4) },
     (_, i) => 0.5 * Math.sin(2 * Math.PI * 170 * i / sampleRate));
