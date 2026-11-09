@@ -86,7 +86,7 @@
       var hiShare = highE / (sum + 1e-18);
       var mudShare = lowMidE / (lowMidE + presenceE + 1e-18);
       var highInQuiet = rms >= 0.006 && rms < 0.09 && hiShare > 0.20;
-      var muddy = rms > 0.025 && mudShare > 0.81 && lowMidE / (sum + 1e-18) > 0.30;
+      var muddy = rms > 0.025 && mudShare > 0.70 && lowMidE / (sum + 1e-18) > 0.27;
       if (highInQuiet) quietHighWindows++;
       if (muddy) lowMidHeavy++;
       flatHits += flatInWindow;
