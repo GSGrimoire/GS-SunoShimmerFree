@@ -27,6 +27,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="stem.css">
 </head>
 <body>
 
@@ -35,7 +36,7 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2" /></svg>
     <span>SunoShimmerFree</span>
   </a>
-  <a class="pill pill-outline" href="https://github.com/GSGrimoire/GS-SunoShimmerFree">Source on GitHub</a>
+  <div class="stem-nav"><button class="pill pill-outline" type="button" data-pick>Import stems ZIP</button><a class="pill pill-outline" href="https://github.com/GSGrimoire/GS-SunoShimmerFree">Source on GitHub</a></div>
 </header>
 
 <div class="app">
@@ -153,9 +154,9 @@
     <div class="upload" id="drop">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
       <h1>Clean up a track</h1>
-      <p>Drop in a song to remove the static and shimmer. WAV works best; MP3 and most other formats work too. Your file stays on this device and is never uploaded.</p>
+      <p>Drop in a song or Suno stem ZIP. WAV works best; MP3 and most other audio formats work too. ZIP archives open a local multistem workspace. Your audio stays on this device.</p>
       <button class="pill pill-cream" type="button" data-pick>Upload audio</button>
-      <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg" class="visually-hidden" tabindex="-1" aria-hidden="true">
+      <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg,.zip" class="visually-hidden" tabindex="-1" aria-hidden="true">
     </div>
 
     <div class="loaded" id="loaded" hidden>
@@ -329,7 +330,7 @@
   <div class="drop-card">
     <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
     <p class="drop-title">Drop to clean</p>
-    <p class="drop-sub" id="dropSub">WAV, MP3, FLAC and most other audio files</p>
+    <p class="drop-sub" id="dropSub">WAV, MP3, FLAC or Suno stems ZIP</p>
   </div>
 </div>
 
@@ -358,6 +359,8 @@
 <script src="edit.js"></script>
 <script src="loudness.js"></script>
 <script src="polish.js"></script>
+<script src="stem-zip.js"></script>
+<script src="stem-ui.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

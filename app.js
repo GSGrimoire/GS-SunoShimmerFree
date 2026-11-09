@@ -262,6 +262,12 @@
   }
 
   function loadFile(file) {
+    if (file && /\.zip$/i.test(file.name)) {
+      stopPlayback();
+      if (window.SunoStemUI) window.SunoStemUI.open(file);
+      else showError('ZIP import is unavailable in this build.');
+      return;
+    }
     // Each file read/decoder may resolve after a later source has been selected.
     // Invalidate *all* previously scheduled continuations before changing UI state.
     var sourceGen = ++st.sourceGeneration;
@@ -1073,7 +1079,7 @@
     window.addEventListener('dragenter', function (e) {
       if (!hasFiles(e)) return;
       e.preventDefault(); depth++;
-      $('dropSub').textContent = st.buffers.original ? 'Replaces ' + st.title : 'WAV, MP3, FLAC and most other audio files';
+      $('dropSub').textContent = st.buffers.original ? 'Replaces ' + st.title : 'WAV, MP3, FLAC or Suno stems ZIP';
       overlay.hidden = false;
     });
     window.addEventListener('dragover', function (e) {
