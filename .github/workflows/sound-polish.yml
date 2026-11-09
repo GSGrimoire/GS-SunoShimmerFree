@@ -5,6 +5,8 @@ on:
     paths:
       - 'polish.js'
       - 'transient.js'
+      - 'auto-clean.js'
+      - 'auto-clean-worker.js'
       - 'loudness.js'
       - 'polish-worker.js'
       - 'app.js'
@@ -23,6 +25,7 @@ on:
       - 'tests/polish_test.js'
       - 'tests/dynamics_test.js'
       - 'tests/transient_test.js'
+      - 'tests/auto_clean_test.js'
       - 'preview_server.py'
       - 'PREVIEW_TESTING.md'
       - 'tests/loudness_test.js'
@@ -32,6 +35,8 @@ on:
     paths:
       - 'polish.js'
       - 'transient.js'
+      - 'auto-clean.js'
+      - 'auto-clean-worker.js'
       - 'loudness.js'
       - 'polish-worker.js'
       - 'app.js'
@@ -50,6 +55,7 @@ on:
       - 'tests/polish_test.js'
       - 'tests/dynamics_test.js'
       - 'tests/transient_test.js'
+      - 'tests/auto_clean_test.js'
       - 'preview_server.py'
       - 'PREVIEW_TESTING.md'
       - 'tests/loudness_test.js'
@@ -72,6 +78,8 @@ jobs:
         run: node tests/dynamics_test.js
       - name: Test gated transient enhancement and high-frequency restraint
         run: node tests/transient_test.js
+      - name: Test Auto Clean metrics, conservative recommendations and sample budget
+        run: node tests/auto_clean_test.js
       - name: Test browser-state integration and export races
         run: node tests/polish_integration_test.js
       - name: Install FFmpeg for independent codec validation
