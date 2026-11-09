@@ -96,8 +96,8 @@
     </section>
 
     <section class="group" aria-labelledby="gPolish">
-      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5c</span></div>
-      <p class="group-note">Optional sound finishing after cleaning. Tone controls reduce muddiness and improve presence; gentle dynamics can tame level variations. This is not reverb removal. Loudness adjustment is optional and peak constrained.</p>
+      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5d</span></div>
+      <p class="group-note">Optional sound finishing after cleaning. Tone controls reduce muddiness and increase presence; gentle dynamics smooth levels. Experimental transient enhancement focuses on lower and middle-frequency attacks rather than high-frequency shimmer. This is not reverb removal.</p>
       <div class="field">
         <label for="polishPreset">Preset</label>
         <select id="polishPreset" class="polish-select">
@@ -105,6 +105,7 @@
           <option value="clear">Clear</option>
           <option value="warm">Warm</option>
           <option value="forward">Forward</option>
+          <option value="punchy">Punchy (experimental)</option>
           <option value="custom">Custom</option>
         </select>
       </div>
@@ -122,6 +123,11 @@
         <label for="polishDynamics">Dynamics</label><output for="polishDynamics">0%</output>
         <input type="range" id="polishDynamics" min="0" max="100" step="5" value="0">
         <p class="help">Gently smooth loud passages with stereo-linked compression. Off preserves the existing tone-only sound; no automatic loudness boost.</p>
+      </div>
+      <div class="field">
+        <label for="polishTransients">Transient emphasis (experimental)</label><output for="polishTransients">0%</output>
+        <input type="range" id="polishTransients" min="0" max="100" step="5" value="0">
+        <p class="help">Add restrained impact to drum-like attacks. Off by default. Can accentuate some source defects; compare before exporting.</p>
       </div>
       <div class="field">
         <label for="polishTarget">Loudness target</label>
@@ -357,6 +363,7 @@
 <script src="engine.js"></script>
 <script src="edit.js"></script>
 <script src="loudness.js"></script>
+<script src="transient.js"></script>
 <script src="polish.js"></script>
 <script src="app.js"></script>
 </body>
