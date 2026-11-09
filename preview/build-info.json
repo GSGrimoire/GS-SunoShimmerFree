@@ -1,7 +1,7 @@
 {
   "status": "experimental-preview",
-  "version": "v5d",
-  "source_branch": "feature/sound-polish-v5d-transients",
-  "source_commit": "d27622fce57ac986dbdc6268fb3d38d453eb61b8",
+  "version": "v5e",
+  "source_branch": "feature/sound-polish-v5e-auto-clean",
+  "source_commit": "979d850056408c4555526ed79d84f8350f7e88df",
   "production_unchanged": true
 }

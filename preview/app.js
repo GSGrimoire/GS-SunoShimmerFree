@@ -28,11 +28,13 @@
  *   v5b Optional linked dynamic control within the same Polished version.
  *   v5c Integrated loudness metering and optional safe target normalization.
  *   v5d Optional low/mid-band transient emphasis, off by default.
+ *   v5e Bounded local Auto Clean analysis with conservative recommendations.
  */
 (function () {
   'use strict';
-  var PAGE_VERSION = '5d';
-  var Engine = window.ShimmerEngine, Wav = window.WavCodec, Ed = window.ShimmerEdit, Polish = window.SunoPolish;
+  var PAGE_VERSION = '5e';
+  var Engine = window.ShimmerEngine, Wav = window.WavCodec, Ed = window.ShimmerEdit,
+      Polish = window.SunoPolish, AutoClean = window.SunoAutoClean;
   var $ = function (id) { return document.getElementById(id); };
   var PARAMS = ['denoiseStrength', 'maxAttenDb', 'bassHz', 'quietPct', 'shimmer', 'shimmerMaxDb', 'shimmerFromHz'];
   var SHOW = {
@@ -57,6 +59,8 @@
     offset: 0, playing: false, exportWorker: null,
     polishWorker: null, polishGeneration: 0, polishRevision: 0, modeChoiceVersion: 0,
     sourceGeneration: 0, cleanGeneration: 0,
+    autoGeneration: 0, autoWorker: null, autoAnalyzing: false,
+    autoPendingPolish: null, autoPolishing: false,
     polishing: false, polishApplied: null, polishGainDb: 0, polishReductionDb: 0,
     polishLoudness: null, polishLimited: false, polishLoudnessMessage: null,
     polishTransientBandBoostDb: 0,
@@ -100,7 +104,7 @@
     $('applyNote').textContent = !loaded ? 'Upload a track to start.' :
       st.busy ? 'Cleaning with these settings.' :
       dirty && st.applied ? 'Settings changed. Clean again to hear them.' : '';
-    refreshDownloadControls();
+    refreshDownloadControls(); refreshAuto();
   }
   function summary(p) {
     return (p.denoise ? 'Static ' + p.maxAttenDb + ' dB' : 'Static off') + ', ' +
@@ -149,16 +153,19 @@
         (st.polishTransientBandBoostDb > 0.05 ? ' Attack-band emphasis up to ' + st.polishTransientBandBoostDb.toFixed(1) + ' dB (experimental).' : '') +
         (st.polishGainDb < -0.01 ? ' Peak protection: ' + st.polishGainDb.toFixed(1) + ' dB.' : '') :
       'Choose a preset, then create a separate Polished version.';
+    refreshAuto();
   }
   function cancelPolish() {
     st.polishGeneration++;
     if (st.polishWorker) st.polishWorker.terminate();
     st.polishWorker = null;
     st.polishing = false;
+    st.autoPolishing = false;
     st.polishRevision++;
   }
-  function runPolish() {
+  function runPolish(autoRequested) {
     if (!st.buffers.clean || st.busy || st.polishing) return;
+    st.autoPolishing = !!autoRequested;
     // Invalidate the old Polished buffer before cancelExport refreshes buttons.
     st.polishing = true;
     st.polishRevision++;
@@ -182,6 +189,10 @@
       st.polishLimited = !!res.normalizationLimited;
       st.polishLoudnessMessage = res.loudnessMessage || null;
       st.polishing = false;
+      if (st.autoPolishing) {
+        st.autoPolishing = false;
+        $('autoStatus').textContent = 'Auto Clean finished. Compare Original and Polished at matched loudness.';
+      }
       $('metaPolish').textContent = 'Clarity ' + params.clarity + '%, presence ' + params.presence +
         '%, dynamics ' + params.dynamics + '%, transients ' + params.transients + '%, loudness ' +
         (params.targetLufs === null ? 'measured' : params.targetLufs + ' LUFS target');
@@ -195,6 +206,7 @@
       if (gen !== st.polishGeneration) return;
       st.polishWorker = null;
       st.polishing = false;
+      if (st.autoPolishing) { st.autoPolishing = false; $('autoStatus').textContent = 'Recommended tone adjustment failed. See the error above.'; }
       hideBusy(); refreshPolish(); refreshDownloadControls();
       showError('Sound Polish failed: ' + msg);
     }
@@ -230,6 +242,135 @@
       w.postMessage({ type: 'polish', channels: chans, sampleRate: sr, params: params },
         chans.map(function (c) { return c.buffer; }));
     } catch (err) { w.terminate(); st.polishWorker = null; fail(err.message); }
+  }
+
+  // ---------------- optional Auto Clean diagnostics ----------------
+  // The worker receives bounded, distributed audio windows only. A diagnostic
+  // result must never be allowed to apply to a replacement source.
+  function refreshAuto() {
+    var button = $('autoClean');
+    if (!button) return;
+    button.disabled = !st.buffers.original || st.busy || st.polishing || st.autoAnalyzing;
+    button.textContent = st.autoAnalyzing ? 'Analyzing locally...' : 'Analyze & Auto Clean';
+  }
+  function cancelAuto() {
+    st.autoGeneration++;
+    if (st.autoWorker) st.autoWorker.terminate();
+    st.autoWorker = null;
+    st.autoAnalyzing = false;
+    st.autoPendingPolish = null;
+    refreshAuto();
+  }
+  function autoReport(result) {
+    var m = result.metrics, f = result.findings;
+    var shortText = result.shouldProcess ?
+      'Recommended gentle cleanup' + (f.muddy ? ' and low-mid clarity' : '') + '. Processing locally...' :
+      'No safe automatic repair recommended; the original remains unchanged.';
+    $('autoStatus').textContent = shortText;
+    $('autoReport').textContent =
+      'Sampled ' + m.sampledWindows + ' distributed passages (' + m.sampledSeconds.toFixed(1) +
+      ' seconds). Observed peak ' + m.peak.toFixed(3) +
+      ', flat-top events ' + m.flatTopEvents + ', click-like discontinuities ' +
+      m.clickLikeEvents + ', quiet treble-rich windows ' + m.quietTrebleWindows +
+      ', low-mid-heavy windows ' + m.lowMidHeavyWindows + '.\n\n' +
+      result.explanation + '\n\n' +
+      (result.shouldProcess ? 'Automatic settings: static ' +
+        (result.clean.denoise ? 'mild, maximum cut ' + result.clean.maxAttenDb + ' dB' : 'off') +
+        '; shimmer ' + Math.round(result.clean.shimmer * 100) + '%; clarity ' +
+        result.polish.clarity + '%; presence, compression, transient emphasis and loudness target off.' :
+        'Automatic settings: no change. Manual settings remain available.');
+    $('autoDetails').hidden = false;
+  }
+  function runAutoClean() {
+    if (!AutoClean || !st.buffers.original || st.busy || st.polishing || st.autoAnalyzing) return;
+    cancelAuto();
+    var sourceGen = st.sourceGeneration, gen = ++st.autoGeneration, sr = st.sr;
+    function current() { return sourceGen === st.sourceGeneration && gen === st.autoGeneration; }
+    st.autoAnalyzing = true;
+    $('autoStatus').textContent = 'Analyzing short passages on this device. No audio upload...';
+    $('autoDetails').hidden = true;
+    refreshAuto();
+    var windows;
+    try { windows = AutoClean.sampleWindows(st.buffers.original, sr); }
+    catch (err) {
+      if (current()) {
+        st.autoAnalyzing = false;
+        $('autoStatus').textContent = 'Auto Clean could not inspect this file.';
+        showError(err.message || String(err)); refreshAuto();
+      }
+      return;
+    }
+    function failure(message) {
+      if (!current()) return;
+      if (st.autoWorker) st.autoWorker.terminate();
+      st.autoWorker = null; st.autoAnalyzing = false;
+      $('autoStatus').textContent = 'Auto Clean diagnosis failed. Manual cleaning remains available.';
+      showError('Auto Clean failed: ' + message); refreshAuto();
+    }
+    function done(result) {
+      if (!current()) return;
+      if (st.autoWorker) st.autoWorker.terminate();
+      st.autoWorker = null; st.autoAnalyzing = false;
+      try {
+        if (!result || !result.clean || !result.polish || !result.metrics) {
+          throw new Error('Incomplete audio diagnosis.');
+        }
+        autoReport(result);
+        refreshAuto();
+        if (!result.shouldProcess) return;
+        // The explicit button click authorizes choosing restrained settings.
+        // In particular, never turn on compression, transient boost or
+        // loudness normalization to hide damaged percussion.
+        writeParams(Engine.resolveParams ? Engine.resolveParams(result.clean) : result.clean);
+        $('polishPreset').value = 'custom';
+        $('polishClarity').value = result.polish.clarity;
+        $('polishPresence').value = result.polish.presence;
+        $('polishDynamics').value = 0;
+        $('polishTransients').value = 0;
+        $('polishTarget').value = 'off';
+        refreshPolish(); refreshDownloadControls();
+        st.autoPendingPolish = result.applyPolish ?
+          { sourceGen: sourceGen, polish: readPolishParams() } : null;
+        runProcess(true);
+      } catch (err) { failure(err.message || String(err)); }
+    }
+    function inline() {
+      setTimeout(function () {
+        if (!current()) return;
+        try { done(AutoClean.inspect(windows, sr)); }
+        catch (err) { failure(err.message || String(err)); }
+      }, 40);
+    }
+    var w;
+    try { w = new Worker('auto-clean-worker.js'); } catch (err) { inline(); return; }
+    st.autoWorker = w;
+    w.onmessage = function (event) {
+      if (!current() || st.autoWorker !== w) return;
+      var m = event.data;
+      if (m.type === 'done') done(m.result);
+      else if (m.type === 'error') failure(m.message || 'Unknown diagnosis error.');
+    };
+    w.onerror = function (event) {
+      event.preventDefault();
+      if (!current() || st.autoWorker !== w) return;
+      w.terminate(); st.autoWorker = null;
+      // The original sampled Float32Arrays may have been transferred (detached).
+      // Re-sample safely for a browser where workers are unavailable.
+      try { windows = AutoClean.sampleWindows(st.buffers.original, sr); inline(); }
+      catch (err) { failure(err.message || String(err)); }
+    };
+    try {
+      var transfers = [];
+      windows.forEach(function (win) {
+        win.channels.forEach(function (channel) { transfers.push(channel.buffer); });
+      });
+      w.postMessage({ type: 'analyze', windows: windows, sampleRate: sr }, transfers);
+    } catch (err) {
+      w.terminate(); st.autoWorker = null;
+      // Transferred arrays may now be detached, so re-sample for fallback.
+      try { windows = AutoClean.sampleWindows(st.buffers.original, sr); inline(); }
+      catch (e) { failure(e.message || String(e)); }
+    }
   }
 
   // ---------------- decoding ----------------
@@ -271,11 +412,13 @@
     // Invalidate *all* previously scheduled continuations before changing UI state.
     var sourceGen = ++st.sourceGeneration;
     ++st.cleanGeneration;
+    cancelAuto();
     cancelExport();
     cancelPolish();
     hideError();
     stopPlayback(); st.offset = 0;
     if (st.worker) { st.worker.terminate(); st.worker = null; }
+    st.busy = false;
     st.buffers = { original: null, clean: null, polish: null, removed: null }; st.specs = {}; st.applied = null; st.everCleaned = false;
     st.polishApplied = null;
     st.peaks = {}; st.peakMax = {};
@@ -283,6 +426,8 @@
     $('export').hidden = true;
     $('metaClean').textContent = 'Not cleaned yet';
     $('metaPolish').textContent = 'Apply Sound Polish after cleaning.';
+    $('autoStatus').textContent = 'Finish loading to analyze this track.';
+    $('autoDetails').hidden = true;
     refreshPolish();
     st.title = file.name.replace(/\.[^.]+$/, '') || 'Track';
     $('songTitle').textContent = st.title;
@@ -336,8 +481,9 @@
   }
 
   // ---------------- processing ----------------
-  function runProcess() {
+  function runProcess(autoRequested) {
     if (!st.buffers.original) return;
+    if (!autoRequested) cancelAuto();
     var sourceGen = st.sourceGeneration, cleanGen = ++st.cleanGeneration;
     function isCurrent() { return sourceGen === st.sourceGeneration && cleanGen === st.cleanGeneration; }
     cancelExport();
@@ -374,9 +520,20 @@
         st.everCleaned = true;
         hideBusy(); refreshDirty(); refreshPolish(); drawSpectra(); drawWave();
         if (st.playing) restartPlayback();
+        var next = st.autoPendingPolish;
+        st.autoPendingPolish = null;
+        if (next && next.sourceGen === st.sourceGeneration &&
+            sameParams(readPolishParams(), next.polish) && sameParams(readParams(), params)) {
+          $('autoStatus').textContent = 'Cleaning complete. Applying recommended mild clarity adjustment...';
+          runPolish(true);
+        } else if (autoRequested) {
+          $('autoStatus').textContent = 'Auto Clean finished. Compare Original and Cleaned at matched loudness.';
+        }
       },
       error: function (msg) {
         if (!isCurrent()) return;
+        st.autoPendingPolish = null;
+        if (autoRequested) $('autoStatus').textContent = 'Auto Clean could not finish cleaning. See the error above.';
         st.busy = false; hideBusy(); refreshDirty(); refreshPolish();
         showError('Cleaning failed: ' + msg);
       }
@@ -1097,19 +1254,22 @@
     });
     window.addEventListener('blur', hideOverlay);
 
-    PARAMS.concat(['denoise']).forEach(function (k) { $(k).addEventListener('input', refreshOutputs); });
-    $('apply').addEventListener('click', runProcess);
+    PARAMS.concat(['denoise']).forEach(function (k) {
+      $(k).addEventListener('input', function () { cancelAuto(); refreshOutputs(); });
+    });
+    $('apply').addEventListener('click', function () { cancelAuto(); runProcess(); });
+    $('autoClean').addEventListener('click', runAutoClean);
     $('reset').addEventListener('click', function () { writeParams(Engine.DEFAULTS); });
-    $('polishPreset').addEventListener('change', function () { setPolishPreset(this.value); });
+    $('polishPreset').addEventListener('change', function () { cancelAuto(); setPolishPreset(this.value); });
     ['polishClarity', 'polishPresence', 'polishDynamics', 'polishTransients'].forEach(function (id) {
       $(id).addEventListener('input', function () {
-        $('polishPreset').value = 'custom'; refreshPolish(); refreshDownloadControls();
+        cancelAuto(); $('polishPreset').value = 'custom'; refreshPolish(); refreshDownloadControls();
       });
     });
     $('polishTarget').addEventListener('change', function () {
-      $('polishPreset').value = 'custom'; refreshPolish(); refreshDownloadControls();
+      cancelAuto(); $('polishPreset').value = 'custom'; refreshPolish(); refreshDownloadControls();
     });
-    $('polishApply').addEventListener('click', runPolish);
+    $('polishApply').addEventListener('click', function () { cancelAuto(); runPolish(); });
 
     $('play').addEventListener('click', function () { if (st.playing) stopPlayback(); else startPlayback(); });
     document.querySelectorAll('input[name="mode"]').forEach(function (r) {

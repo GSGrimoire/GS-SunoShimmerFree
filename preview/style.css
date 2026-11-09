@@ -382,3 +382,15 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* Local diagnostics, intentionally visually subordinate to the manual controls. */
+.auto-group .pill-auto {
+  width: 100%; min-height: 44px; margin-top: 10px; border: 1px solid var(--edge);
+  background: var(--raised-2); color: var(--ink); border-radius: 9999px;
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.auto-group .pill-auto:hover:not(:disabled) { background: #34343b; }
+.auto-group .pill-auto:disabled { opacity: .45; cursor: not-allowed; }
+.auto-group .auto-details { margin-top: 12px; }
+.auto-group .auto-details p { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+.auto-group .auto-limits { margin: 10px 0 0; font-size: 12px; color: var(--ink-3); }

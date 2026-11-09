@@ -15,13 +15,14 @@
     v4  Local MP3 downloads alongside WAV, with progress and cancellation.
     v5b Optional linked dynamic control as an additional Sound Polish setting.
     v5a Optional Sound Polish tone finishing with presets and a separate audio version.
+    v5e Optional locally computed Auto Clean suggestions.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101012">
-<title>SSF v5d Experimental Preview | SunoShimmerFree</title>
+<title>SSF v5e Auto Clean Preview | SunoShimmerFree</title>
 <meta name="robots" content="noindex, nofollow">
 <meta name="description" content="Clear the static and glassy shimmer from AI-rendered music. Runs in your browser; your file is never uploaded.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -39,11 +40,11 @@
 <header class="topbar">
   <a class="brand" href="./" aria-label="SunoShimmerFree home">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2" /></svg>
-    <span>SunoShimmerFree <strong class="preview-pill">PREVIEW v5d</strong></span>
+    <span>SunoShimmerFree <strong class="preview-pill">PREVIEW v5e</strong></span>
   </a>
   <a class="pill pill-outline" href="https://github.com/GSGrimoire/GS-SunoShimmerFree">Source on GitHub</a>
 </header>
-<div class="preview-notice" role="note"><strong>Experimental test build.</strong> Clarity, dynamics, loudness and transients are not released yet. Your audio stays on your device. <a href="../">Open live version</a></div>
+<div class="preview-notice" role="note"><strong>Experimental Auto Clean test build.</strong> Signal indicators are estimates, not a de-clipping repair. Your audio stays on this device. <a href="../">Open live version</a></div>
 
 <div class="app">
 
@@ -102,8 +103,20 @@
       </div>
     </section>
 
+    <section class="group auto-group" aria-labelledby="gAuto">
+      <div class="group-head"><h3 id="gAuto">Auto Clean</h3><span class="new-label">experimental</span></div>
+      <p class="group-note">Analyze a few short passages on this device. Choose conservative cleaning settings and run them in one click when a suitable problem is detected. No upload or instrument separation.</p>
+      <button class="pill pill-auto" id="autoClean" type="button" disabled>Analyze &amp; Auto Clean</button>
+      <p class="group-note" id="autoStatus" role="status" aria-live="polite">Load a track to analyze its quality.</p>
+      <details class="more auto-details" id="autoDetails" hidden>
+        <summary>Why these settings?</summary>
+        <p id="autoReport"></p>
+      </details>
+      <p class="help auto-limits">Flat-topped drum hits, clicks and lossy encoding damage cannot reliably be restored. Auto Clean avoids automatically boosting transients or loudness.</p>
+    </section>
+
     <section class="group" aria-labelledby="gPolish">
-      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5d</span></div>
+      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5e</span></div>
       <p class="group-note">Optional sound finishing after cleaning. Tone controls reduce muddiness and increase presence; gentle dynamics smooth levels. Experimental transient enhancement focuses on lower and middle-frequency attacks rather than high-frequency shimmer. This is not reverb removal.</p>
       <div class="field">
         <label for="polishPreset">Preset</label>
@@ -372,6 +385,7 @@
 <script src="loudness.js"></script>
 <script src="transient.js"></script>
 <script src="polish.js"></script>
+<script src="auto-clean.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
