@@ -153,6 +153,9 @@
   }
   async function open(file) {
     make(); cancel(); clearPreview();
+    // A new archive must not inherit a decoder context and sample rate from
+    // the previous archive. Audio buffer previews have already been stopped.
+    if (context) { context.close().catch(function(){}); context = null; }
     box.hidden = false; document.body.classList.add('has-stem-workspace');
     $('stemList').replaceChildren(); $('stemArchive').hidden = true; $('stemWarnings').hidden = true;
     $('stemMixInfo').textContent = 'No mix built.';
@@ -373,7 +376,11 @@
   }
   async function build(kind, stem) {
     if (busy || !current) return;
-    cancel(); clearPreview(); busy = true; renderActions();
+    cancel(); clearPreview();
+    // Always choose the decode rate from the stem(s) requested for this build,
+    // not a stale AudioContext used by an earlier preview.
+    if (context) { context.close().catch(function(){}); context = null; }
+    busy = true; renderActions();
     var gen=generation, selected=kind==='stem'?[stem]:selectedStems(), mix=null;
     if (!selected.length) {
       busy=false;renderActions();status('Enable at least one unmuted stem, or select Solo.',true);return;
