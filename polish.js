@@ -1,5 +1,5 @@
-/* GS SunoShimmerFree Sound Polish v3.
- * Offline tone, linked dynamics and optional peak-constrained normalization.
+/* GS SunoShimmerFree Sound Polish v4.
+ * Offline tone, dynamics, optional transient enhancement, and normalization.
  * Clarity and presence: bell filters; dynamics: gentle soft-knee RMS compressor.
  * Filter histories are independent, dynamics gain is linked across channels.
  */
@@ -7,11 +7,14 @@
   'use strict';
   var Loudness = (root && root.SunoLoudness) ||
     (typeof module !== 'undefined' && typeof require === 'function' ? require('./loudness.js') : null);
+  var Transient = (root && root.SunoTransient) ||
+    (typeof module !== 'undefined' && typeof require === 'function' ? require('./transient.js') : null);
   var PRESETS = {
-    natural: { clarity: 20, presence: 20, dynamics: 0 },
-    clear: { clarity: 55, presence: 55, dynamics: 15 },
-    warm: { clarity: 25, presence: 10, dynamics: 10 },
-    forward: { clarity: 20, presence: 70, dynamics: 15 }
+    natural: { clarity: 20, presence: 20, dynamics: 0, transients: 0 },
+    clear: { clarity: 55, presence: 55, dynamics: 15, transients: 0 },
+    warm: { clarity: 25, presence: 10, dynamics: 10, transients: 0 },
+    forward: { clarity: 20, presence: 70, dynamics: 15, transients: 0 },
+    punchy: { clarity: 30, presence: 25, dynamics: 10, transients: 35 }
   };
   function amount(v) {
     v = Number(v);
@@ -25,7 +28,7 @@
       throw new Error('Choose a supported loudness target.');
     }
     return { clarity: amount(p.clarity), presence: amount(p.presence),
-      dynamics: amount(p.dynamics), targetLufs: target };
+      dynamics: amount(p.dynamics), transients: amount(p.transients), targetLufs: target };
   }
   function bell(sampleRate, frequency, q, db) {
     var w = 2 * Math.PI * Math.min(frequency, sampleRate * 0.42) / sampleRate;
@@ -85,7 +88,7 @@
     var toneActive = p.clarity > 0 || p.presence > 0;
     // A requested loudness target is not itself a signal operation: unsupported
     // short/multichannel audio must stay bit-identical when tone/dynamics are off.
-    var active = toneActive || p.dynamics > 0, output = [];
+    var active = toneActive || p.dynamics > 0 || p.transients > 0, output = [];
     var eq = [
       bell(sampleRate, 320, 0.80, -3 * p.clarity / 100),
       bell(sampleRate, 2500, 0.90, 2.5 * p.presence / 100)
@@ -115,6 +118,13 @@
       output.push(out);
     }
     var maxReductionDb = compressLinked(output, sampleRate, p.dynamics);
+    // Transient enhancement operates after the gentle compressor and before
+    // loudness measurement, so its extra attack energy is measured and
+    // subject to the same sample-peak safety as all other polish controls.
+    var transientResult = p.transients > 0 && Transient ?
+      Transient.processInPlace(output, sampleRate, p.transients) :
+      { maxBandBoostDb: 0, activeSamples: 0 };
+    if (p.transients > 0 && !Transient) throw new Error('Transient processor unavailable.');
     for (var j = 0; j < n; j++) for (var c = 0; c < output.length; c++) {
       var value = Math.abs(output[c][j]);
       if (!Number.isFinite(value)) throw new Error('Sound Polish generated an invalid sample.');
@@ -162,13 +172,15 @@
     }
     return { channels: output, settings: p, peak: peak * gain,
       dynamicMaxReductionDb: maxReductionDb,
+      transientMaxBandBoostDb: transientResult.maxBandBoostDb,
+      transientActiveSamples: transientResult.activeSamples,
       loudnessBefore: meter.valid ? meter.lufs : null,
       loudnessAfter: outputMeter.valid ? outputMeter.lufs : null,
       loudnessMessage: outputMeter.valid ? null : outputMeter.reason,
       normalizationGainDb: normalizationGainDb, normalizationLimited: limited,
       safetyGainDb: safetyDb };
   }
-  var api = { VERSION: '3', PRESETS: PRESETS, settings: settings, process: process };
+  var api = { VERSION: '4', PRESETS: PRESETS, settings: settings, process: process };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.SunoPolish = api;
 })(typeof self !== 'undefined' ? self : null);
