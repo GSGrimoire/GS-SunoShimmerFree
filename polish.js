@@ -1,10 +1,12 @@
-/* GS SunoShimmerFree Sound Polish v2.
- * Pure JavaScript, deterministic offline tone and linked dynamics processing.
+/* GS SunoShimmerFree Sound Polish v3.
+ * Offline tone, linked dynamics and optional peak-constrained normalization.
  * Clarity and presence: bell filters; dynamics: gentle soft-knee RMS compressor.
  * Filter histories are independent, dynamics gain is linked across channels.
  */
 (function (root) {
   'use strict';
+  var Loudness = (root && root.SunoLoudness) ||
+    (typeof module !== 'undefined' && typeof require === 'function' ? require('./loudness.js') : null);
   var PRESETS = {
     natural: { clarity: 20, presence: 20, dynamics: 0 },
     clear: { clarity: 55, presence: 55, dynamics: 15 },
@@ -17,7 +19,13 @@
   }
   function settings(p) {
     p = p || {};
-    return { clarity: amount(p.clarity), presence: amount(p.presence), dynamics: amount(p.dynamics) };
+    var target = p.targetLufs === null || p.targetLufs === undefined || p.targetLufs === 'off' ?
+      null : Number(p.targetLufs);
+    if (target !== null && [-18, -16, -14].indexOf(target) < 0) {
+      throw new Error('Choose a supported loudness target.');
+    }
+    return { clarity: amount(p.clarity), presence: amount(p.presence),
+      dynamics: amount(p.dynamics), targetLufs: target };
   }
   function bell(sampleRate, frequency, q, db) {
     var w = 2 * Math.PI * Math.min(frequency, sampleRate * 0.42) / sampleRate;
@@ -75,6 +83,8 @@
       if (!channels[c] || channels[c].length !== n) throw new Error('Audio channels have different lengths.');
     }
     var toneActive = p.clarity > 0 || p.presence > 0;
+    // A requested loudness target is not itself a signal operation: unsupported
+    // short/multichannel audio must stay bit-identical when tone/dynamics are off.
     var active = toneActive || p.dynamics > 0, output = [];
     var eq = [
       bell(sampleRate, 320, 0.80, -3 * p.clarity / 100),
@@ -110,19 +120,55 @@
       if (!Number.isFinite(value)) throw new Error('Sound Polish generated an invalid sample.');
       if (value > peak) peak = value;
     }
-    // Never let enabled processing overrun the current full-scale peak.
-    // A single linked attenuation preserves the stereo balance.
-    var gain = active && peak > 0.97 ? 0.97 / peak : 1;
-    if (gain < 1) {
-      for (var a = 0; a < output.length; a++) {
-        for (var t = 0; t < n; t++) output[a][t] *= gain;
+    // Measure every supported Polished track to inform a future quality assistant.
+    // An unmeasurable short or multichannel track is left unnormalized.
+    var meter = Loudness ? Loudness.measure(output, sampleRate) :
+      { valid: false, lufs: null, peak: peak, reason: 'Loudness meter unavailable.' };
+    var normalizationGainDb = 0, limited = false;
+    var normalizationEligible = p.targetLufs !== null && meter.valid && peak > 0;
+    if (normalizationEligible) {
+      var desiredDb = p.targetLufs - meter.lufs;
+      var boundedDb = Math.max(-12, Math.min(6, desiredDb));
+      var desiredGain = Math.pow(10, boundedDb / 20);
+      // Never raise sample peaks above 0.97; this is not true-peak limiting.
+      var safeGain = Math.min(desiredGain, 0.97 / peak);
+      if (safeGain !== 1) {
+        for (var a = 0; a < output.length; a++) {
+          for (var t = 0; t < n; t++) output[a][t] *= safeGain;
+        }
       }
+      peak *= safeGain;
+      normalizationGainDb = 20 * Math.log10(safeGain);
+      limited = Math.abs(normalizationGainDb - desiredDb) > 0.15;
+    }
+    // Sample peak protection belongs to processing that actually happened.
+    // A target-only request rejected by the meter must remain a true bypass.
+    var gain = (active || normalizationEligible) && peak > 0.97 ? 0.97 / peak : 1;
+    if (gain < 1) {
+      for (var c = 0; c < output.length; c++) {
+        for (var j = 0; j < n; j++) output[c][j] *= gain;
+      }
+    }
+    var safetyDb = gain < 1 ? 20 * Math.log10(gain) : 0;
+    // An absolute gate is not gain-invariant. If gain changes, the set of
+    // counted blocks may change, so measure final samples instead of adding dB.
+    var outputMeter = meter;
+    if (Loudness && meter.valid && (Math.abs(normalizationGainDb) > 1e-9 || gain < 1)) {
+      outputMeter = Loudness.measure(output, sampleRate);
+    }
+    if (p.targetLufs !== null) {
+      if (!meter.valid || !outputMeter.valid) limited = true;
+      else if (Math.abs(outputMeter.lufs - p.targetLufs) > 0.25) limited = true;
     }
     return { channels: output, settings: p, peak: peak * gain,
       dynamicMaxReductionDb: maxReductionDb,
-      safetyGainDb: gain < 1 ? 20 * Math.log10(gain) : 0 };
+      loudnessBefore: meter.valid ? meter.lufs : null,
+      loudnessAfter: outputMeter.valid ? outputMeter.lufs : null,
+      loudnessMessage: outputMeter.valid ? null : outputMeter.reason,
+      normalizationGainDb: normalizationGainDb, normalizationLimited: limited,
+      safetyGainDb: safetyDb };
   }
-  var api = { VERSION: '2', PRESETS: PRESETS, settings: settings, process: process };
+  var api = { VERSION: '3', PRESETS: PRESETS, settings: settings, process: process };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.SunoPolish = api;
 })(typeof self !== 'undefined' ? self : null);

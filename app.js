@@ -26,10 +26,11 @@
  *   v4  Local MP3 export with quality choices, progress and cancellation.
  *   v5a Optional Sound Polish clarity/presence with presets and a separate version.
  *   v5b Optional linked dynamic control within the same Polished version.
+ *   v5c Integrated loudness metering and optional safe target normalization.
  */
 (function () {
   'use strict';
-  var PAGE_VERSION = '5b';
+  var PAGE_VERSION = '5c';
   var Engine = window.ShimmerEngine, Wav = window.WavCodec, Ed = window.ShimmerEdit, Polish = window.SunoPolish;
   var $ = function (id) { return document.getElementById(id); };
   var PARAMS = ['denoiseStrength', 'maxAttenDb', 'bassHz', 'quietPct', 'shimmer', 'shimmerMaxDb', 'shimmerFromHz'];
@@ -56,6 +57,7 @@
     polishWorker: null, polishGeneration: 0, polishRevision: 0, modeChoiceVersion: 0,
     sourceGeneration: 0, cleanGeneration: 0,
     polishing: false, polishApplied: null, polishGainDb: 0, polishReductionDb: 0,
+    polishLoudness: null, polishLimited: false, polishLoudnessMessage: null,
     segs: null, hist: [], fut: [], sel: null, sec: null, zoom: 1, peaks: {}, peakMax: {}
   };
 
@@ -107,7 +109,8 @@
   // ---------------- optional Sound Polish ----------------
   function readPolishParams() {
     return Polish.settings({ clarity: Number($('polishClarity').value), presence: Number($('polishPresence').value),
-      dynamics: Number($('polishDynamics').value) });
+      dynamics: Number($('polishDynamics').value),
+      targetLufs: $('polishTarget').value === 'off' ? null : Number($('polishTarget').value) });
   }
   function setPolishPreset(name) {
     var p = Polish.PRESETS[name];
@@ -116,6 +119,7 @@
     $('polishClarity').value = p.clarity;
     $('polishPresence').value = p.presence;
     $('polishDynamics').value = p.dynamics;
+    $('polishTarget').value = 'off';
     refreshPolish(); refreshDownloadControls();
   }
   function refreshPolish() {
@@ -125,6 +129,7 @@
       setFill(el);
     });
     var ready = !!st.buffers.clean && !st.busy;
+    var timelineEdited = !!(st.segs && st.n && !Ed.isPristine(st.segs, st.n));
     var changed = !sameParams(readPolishParams(), st.polishApplied);
     $('polishApply').disabled = !ready || st.polishing || (!changed && !!st.buffers.polish);
     $('polishApply').textContent = st.polishing ? 'Polishing...' :
@@ -133,6 +138,10 @@
       !ready ? 'Clean a track first.' :
       st.buffers.polish && changed ? 'Settings changed. Reapply to hear the difference.' :
       st.buffers.polish ? 'Polished version ready.' +
+        (st.polishLoudness !== null ? ' Measured before timeline edits: ' + st.polishLoudness.toFixed(1) + ' LUFS.' : '') +
+        (timelineEdited ? ' Timeline edits can change exported loudness and may clip; peak protection applies before edits.' : '') +
+        (st.polishLimited ? ' Target not fully reached due to gain or peak limits.' : '') +
+        (st.polishLoudnessMessage ? ' ' + st.polishLoudnessMessage : '') +
         (st.polishReductionDb > 0.05 ? ' Dynamics reduced up to ' + st.polishReductionDb.toFixed(1) + ' dB.' : '') +
         (st.polishGainDb < -0.01 ? ' Peak protection: ' + st.polishGainDb.toFixed(1) + ' dB.' : '') :
       'Choose a preset, then create a separate Polished version.';
@@ -164,9 +173,13 @@
       st.polishApplied = params;
       st.polishGainDb = res.safetyGainDb;
       st.polishReductionDb = res.dynamicMaxReductionDb || 0;
+      st.polishLoudness = res.loudnessAfter === undefined ? null : res.loudnessAfter;
+      st.polishLimited = !!res.normalizationLimited;
+      st.polishLoudnessMessage = res.loudnessMessage || null;
       st.polishing = false;
       $('metaPolish').textContent = 'Clarity ' + params.clarity + '%, presence ' + params.presence +
-        '%, dynamics ' + params.dynamics + '%';
+        '%, dynamics ' + params.dynamics + '%, loudness ' +
+        (params.targetLufs === null ? 'measured' : params.targetLufs + ' LUFS target');
       setModeAvailability(true);
       // Respect user listening choices made while the worker was running.
       if (st.modeChoiceVersion === initialModeChoice) setMode('polish');
@@ -547,6 +560,9 @@
     }
     var edited = !Ed.isPristine(st.segs, st.n);
     $('editsNote').hidden = !edited;
+    // Loudness is measured on the unedited Polished buffer; relabel the
+    // displayed measurement whenever timeline edits become active or are reset.
+    refreshPolish();
     $('edUndo').disabled = !st.hist.length; $('edRedo').disabled = !st.fut.length;
     $('edReset').disabled = !edited;
     shadeCuts(); refreshTools(); refreshInspector(); sizeWave(); drawWave(); tick();
@@ -646,6 +662,9 @@
     refreshInspector(); drawWave();
     $('editsNote').hidden = Ed.isPristine(st.segs, st.n);
     $('edUndo').disabled = false; $('edReset').disabled = Ed.isPristine(st.segs, st.n);
+    // Keep the pre-edit loudness/clipping disclaimer in sync while a slider
+    // is being dragged, rather than only after its final change event.
+    refreshPolish();
   }
   function inspectorChange() { if (sliderTx) { sliderTx = false; afterEdit(true); } }
 
@@ -1081,6 +1100,9 @@
       $(id).addEventListener('input', function () {
         $('polishPreset').value = 'custom'; refreshPolish(); refreshDownloadControls();
       });
+    });
+    $('polishTarget').addEventListener('change', function () {
+      $('polishPreset').value = 'custom'; refreshPolish(); refreshDownloadControls();
     });
     $('polishApply').addEventListener('click', runPolish);
 

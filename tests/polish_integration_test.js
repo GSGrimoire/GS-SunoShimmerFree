@@ -124,6 +124,7 @@ function harness() {
   const window = { ShimmerEngine: Engine, ShimmerEdit: Ed, WavCodec: wav,
     SunoPolish: Polish, AudioContext, addEventListener: noOp, devicePixelRatio: 1 };
   el('bits').value = '24';
+  el('polishTarget').value = 'off';
   el('loaded').hidden = true;
   el('transport').hidden = true;
   el('denoise').checked = true;
@@ -145,7 +146,10 @@ function harness() {
     assert(w && w.messages.length, 'polish worker started');
     const job = w.messages.at(-1);
     const p = Polish.process(job.channels, job.sampleRate, job.params);
-    w.emit({ type: 'done', channels: p.channels, safetyGainDb: p.safetyGainDb });
+    w.emit({ type: 'done', channels: p.channels, safetyGainDb: p.safetyGainDb,
+      dynamicMaxReductionDb: p.dynamicMaxReductionDb,
+      loudnessAfter: p.loudnessAfter, loudnessBefore: p.loudnessBefore,
+      normalizationLimited: p.normalizationLimited, loudnessMessage: p.loudnessMessage });
   }
   function choose(mode) { radio[mode].checked = true; radio[mode].fire('change'); }
   function preset(name) { el('polishPreset').value = name; el('polishPreset').fire('change'); }
@@ -266,6 +270,67 @@ async function flush() {
   await new Promise(resolve => setImmediate(resolve));
   await new Promise(resolve => setImmediate(resolve));
 }
+async function testLiveLoudnessWarningOnSliderInput() {
+  const h = harness(); await h.open();
+  h.el('polishApply').fire('click'); h.polishDone();
+  assert(!h.el('polishStatus').textContent.includes('Timeline edits can change'),
+    'pristine status has no editing warning');
+  h.el('secGain').value = '6';
+  h.el('secGain').fire('input');
+  assert(h.el('polishStatus').textContent.includes('Timeline edits can change exported loudness'),
+    'warning updates during the slider gesture, before change is committed');
+  h.el('secGain').fire('change');
+  assert(h.el('polishStatus').textContent.includes('peak protection applies before edits'),
+    'committed slider retains clipping warning');
+  h.el('edUndo').fire('click');
+  assert(!h.el('polishStatus').textContent.includes('Timeline edits can change'),
+    'undo removes live warning when timeline becomes pristine');
+}
+
+async function testPreEditLoudnessLabel() {
+  const h = harness(); await h.open();
+  h.el('polishApply').fire('click'); h.polishDone();
+  const baseStatus = h.el('polishStatus').textContent;
+  assert(baseStatus.includes('Measured before timeline edits:'),
+    'measured LUFS must be explicitly identified as pre-edit');
+  assert(!baseStatus.includes('Timeline edits can change exported loudness'),
+    'unedited track must not claim edits exist');
+
+  h.el('seek').value = '500';
+  h.el('seek').fire('input');
+  h.el('edSplit').fire('click');
+  const editedStatus = h.el('polishStatus').textContent;
+  assert(editedStatus.includes('Measured before timeline edits:'),
+    'post-edit status must not relabel the pre-edit meter as final loudness');
+  assert(editedStatus.includes('Timeline edits can change exported loudness and may clip'),
+    'after timeline edits show export-loudness and clipping warning');
+  assert(editedStatus.includes('peak protection applies before edits'),
+    'make peak protection boundary explicit');
+
+  h.el('edReset').fire('click');
+  assert(!h.el('polishStatus').textContent.includes('Timeline edits can change exported loudness'),
+    'resetting edits must remove the edit-specific warning');
+}
+
+async function testLoudnessPresetAndExport() {
+  const h = harness(); await h.open();
+  h.el('polishTarget').value = '-18';
+  h.el('polishTarget').fire('change');
+  assert.equal(h.el('polishPreset').value, 'custom',
+    'loudness change creates a Custom preset');
+  h.el('polishApply').fire('click');
+  const job = h.last('polish-worker.js').messages.at(-1);
+  assert.equal(job.params.targetLufs, -18, 'loudness target sent to processing worker');
+  h.polishDone();
+  assert(h.el('metaPolish').textContent.includes('-18 LUFS target'),
+    'desired target shown in Polished metadata');
+  assert.equal(h.el('dlPolish').disabled, false);
+  h.el('polishTarget').value = '-16';
+  h.el('polishTarget').fire('change');
+  assert.equal(h.el('dlPolish').disabled, true,
+    'changing target invalidates outdated Polished download');
+}
+
 async function testDynamicsPresetAndExport() {
   const h = harness(); await h.open();
   h.preset('clear');
@@ -350,10 +415,13 @@ async function testOverlappingSourceReadsAndWorkers() {
 (async () => {
   await testOverlappingSourceReadsAndWorkers();
   await testDynamicsPresetAndExport();
+  await testLoudnessPresetAndExport();
+  await testPreEditLoudnessLabel();
+  await testLiveLoudnessWarningOnSliderInput();
   await testExportRace();
   await testModeChoice(false);
   await testModeChoice(true);
   await testRecleanTransitions();
   await testExportsAndReplacement();
-  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, dynamics, cleaning transitions, edits and replacement.');
+  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, dynamics, loudness targets, cleaning transitions, edits and replacement.');
 })().catch(err => { console.error(err); process.exitCode = 1; });

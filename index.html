@@ -96,8 +96,8 @@
     </section>
 
     <section class="group" aria-labelledby="gPolish">
-      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5b</span></div>
-      <p class="group-note">Optional sound finishing after cleaning. Tone controls reduce muddiness and improve presence; gentle dynamics can tame level variations. This is not reverb removal or loudness normalization.</p>
+      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5c</span></div>
+      <p class="group-note">Optional sound finishing after cleaning. Tone controls reduce muddiness and improve presence; gentle dynamics can tame level variations. This is not reverb removal. Loudness adjustment is optional and peak constrained.</p>
       <div class="field">
         <label for="polishPreset">Preset</label>
         <select id="polishPreset" class="polish-select">
@@ -122,6 +122,16 @@
         <label for="polishDynamics">Dynamics</label><output for="polishDynamics">0%</output>
         <input type="range" id="polishDynamics" min="0" max="100" step="5" value="0">
         <p class="help">Gently smooth loud passages with stereo-linked compression. Off preserves the existing tone-only sound; no automatic loudness boost.</p>
+      </div>
+      <div class="field">
+        <label for="polishTarget">Loudness target</label>
+        <select id="polishTarget" class="polish-select">
+          <option value="off" selected>Off: measure only</option>
+          <option value="-18">-18 LUFS (quieter)</option>
+          <option value="-16">-16 LUFS (balanced)</option>
+          <option value="-14">-14 LUFS (louder)</option>
+        </select>
+        <p class="help">Loudness units relative to full scale (LUFS). Boost is limited by peak headroom, so the target may not be reached.</p>
       </div>
       <button class="chip polish-button" type="button" id="polishApply" disabled>Polish cleaned track</button>
       <p class="group-note" id="polishStatus" role="status" aria-live="polite">Clean a track first.</p>
@@ -233,7 +243,7 @@
         </div>
       </fieldset>
       <p class="edits-note" id="editsNote" hidden>Playback and downloads include your edits.</p>
-      <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1 = Original, 2 = Cleaned, 3 = Polished, 4 = Removed. The Cleaned version is unmastered; Polished adds optional tone and dynamic control with sample-peak protection (not loudness normalization). The spectrogram still shows Cleaned when listening to Polished.</p>
+      <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1 = Original, 2 = Cleaned, 3 = Polished, 4 = Removed. The Cleaned version is unmastered; Polished adds optional tone, dynamic and peak-constrained loudness controls. The spectrogram still shows Cleaned when listening to Polished.</p>
 
       <section class="editor" aria-labelledby="editHead">
         <div class="list-head">
@@ -346,6 +356,7 @@
 <script src="wav.js"></script>
 <script src="engine.js"></script>
 <script src="edit.js"></script>
+<script src="loudness.js"></script>
 <script src="polish.js"></script>
 <script src="app.js"></script>
 </body>
