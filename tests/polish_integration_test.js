@@ -9,6 +9,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const Ed = require('../edit.js');
 const Polish = require('../polish.js');
+const Auto = require('../auto-clean.js');
 const appCode = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
@@ -122,7 +123,7 @@ function harness() {
       shimmerMaxDb: 6, shimmerFromHz: 4000 }
   };
   const window = { ShimmerEngine: Engine, ShimmerEdit: Ed, WavCodec: wav,
-    SunoPolish: Polish, AudioContext, addEventListener: noOp, devicePixelRatio: 1 };
+    SunoPolish: Polish, SunoAutoClean: Auto, AudioContext, addEventListener: noOp, devicePixelRatio: 1 };
   el('bits').value = '24';
   el('polishTarget').value = 'off';
   el('loaded').hidden = true;
@@ -169,6 +170,109 @@ function harness() {
   return { el, workers, downloads, wavCaptures, last, open, preset, choose, cleanDone, polishDone,
     radio, window, source };
 }
+
+function makeAutoPlan({ noisy = true, muddy = true, clipping = false } = {}) {
+  const metrics = {
+    peak: 0.82, rms: 0.19, flatTopEvents: clipping ? 5 : 0,
+    clickLikeEvents: 0, quietTrebleWindows: noisy ? 4 : 0,
+    lowMidHeavyWindows: muddy ? 5 : 0,
+    sampledWindows: 8, sampledSeconds: 4
+  };
+  return Auto.recommend({ metrics, windows: [] });
+}
+async function testAutoCleanWorkflow() {
+  const h = harness(); await h.open();
+  assert.equal(h.el('autoClean').disabled, false, 'Auto Clean available when original is loaded and cleaning is idle');
+  h.preset('punchy');
+  h.el('polishTarget').value = '-14';
+  h.el('autoClean').fire('click');
+  const analyzer = h.last('auto-clean-worker.js');
+  assert(analyzer && analyzer.messages.length === 1, 'Auto Clean must start a separate local worker');
+  const samples = analyzer.messages[0].windows;
+  assert(samples.length >= 1 && samples.length <= 16, 'analysis gets bounded sample windows');
+  assert(samples.every(w => w.channels.length === 2 && w.channels[0].length <= 24000));
+  assert.equal(h.el('autoClean').disabled, true, 'analysis button disabled during inspection');
+  assert(h.el('autoStatus').textContent.includes('Analyzing'));
+
+  const plan = makeAutoPlan({ noisy: true, muddy: true });
+  const beforeCount = h.workers.filter(w => w.url === 'worker.js').length;
+  analyzer.emit({ type: 'done', result: plan });
+  assert.equal(analyzer.terminated, true, 'auto analyzer terminates after completing');
+  assert(h.el('autoDetails').hidden === false, 'explanation becomes visible');
+  assert(h.el('autoReport').textContent.includes('flat-top events'), 'diagnostic details are disclosed');
+  assert.equal(h.el('denoise').checked, true, 'recommended mild static settings applied');
+  assert.equal(Number(h.el('maxAttenDb').value), 4.5);
+  assert.equal(Number(h.el('polishClarity').value), 25);
+  assert.equal(Number(h.el('polishPresence').value), 0);
+  assert.equal(Number(h.el('polishDynamics').value), 0);
+  assert.equal(Number(h.el('polishTransients').value), 0, 'Auto Clean overrides risky manual transient settings');
+  assert.equal(h.el('polishTarget').value, 'off', 'Auto Clean does not boost loudness automatically');
+  assert.equal(h.workers.filter(w => w.url === 'worker.js').length, beforeCount + 1,
+    'Auto Clean triggers re-cleaning with the new settings');
+  assert.equal(h.el('autoClean').disabled, true, 'button disabled during auto cleaning');
+  h.cleanDone();
+  const polishJob = h.last('polish-worker.js');
+  assert(polishJob && polishJob.messages.length, 'mild automatic clarity runs after cleaning finishes');
+  assert.equal(polishJob.messages.at(-1).params.clarity, 25);
+  h.polishDone();
+  assert.equal(h.el('dlPolish').disabled, false, 'automatic Polished version is ready to export');
+  assert(h.el('autoStatus').textContent.includes('finished'), 'Auto Clean marks completion');
+}
+async function testAutoNoOpAndClickRisk() {
+  const h = harness(); await h.open();
+  const engineCount = h.workers.filter(w => w.url === 'worker.js').length;
+  const initialClarity = h.el('polishClarity').value;
+  h.el('autoClean').fire('click');
+  const analyzer = h.last('auto-clean-worker.js');
+  analyzer.emit({ type: 'done', result: makeAutoPlan({ noisy: false, muddy: false, clipping: true }) });
+  assert.equal(h.workers.filter(w => w.url === 'worker.js').length, engineCount,
+    'clipping alone must not spawn false restorative processing');
+  assert.equal(h.el('polishClarity').value, initialClarity, 'no-op preserves user settings');
+  assert(h.el('autoReport').textContent.includes('cannot reconstruct damaged drum hits'),
+    'flattened drums produce an honest warning');
+  assert(h.el('autoStatus').textContent.includes('original remains unchanged'));
+}
+async function testAutoReplacementAndManualCancel() {
+  const h = harness(); await h.open();
+  h.el('autoClean').fire('click');
+  const stale = h.last('auto-clean-worker.js');
+  h.el('polishClarity').value = '40';
+  h.el('polishClarity').fire('input');
+  assert.equal(stale.terminated, true, 'manual control change cancels analysis');
+  stale.emit({ type: 'done', result: makeAutoPlan({ noisy: true }) });
+  assert.equal(Number(h.el('polishClarity').value), 40, 'obsolete auto recommendation cannot override manual choice');
+
+  h.el('autoClean').fire('click');
+  const replaced = h.last('auto-clean-worker.js');
+  h.el('file').files = [{ name: 'Replacement.wav', arrayBuffer: async () => riff(70) }];
+  h.el('file').fire('change');
+  assert.equal(replaced.terminated, true, 'replacing source terminates in-flight Auto Clean');
+  const count = h.workers.length;
+  replaced.emit({ type: 'done', result: makeAutoPlan({ noisy: true }) });
+  assert.equal(h.workers.length, count, 'stale analysis cannot spawn cleaning on replacement source');
+  await flush();
+  assert.equal(h.el('songTitle').textContent, 'Replacement');
+  h.cleanDone();
+  h.el('autoClean').fire('click');
+  const currentAnalyzer = h.last('auto-clean-worker.js');
+  currentAnalyzer.emit({ type: 'done', result: makeAutoPlan({ noisy: true, muddy: true }) });
+  const beforePolish = h.workers.filter(w => w.url === 'polish-worker.js').length;
+  h.el('polishClarity').value = '55'; h.el('polishClarity').fire('input');
+  h.cleanDone();
+  assert.equal(h.workers.filter(w => w.url === 'polish-worker.js').length, beforePolish,
+    'manually edited polish parameters must cancel queued Auto Clean polishing');
+}
+async function testAutoAnalysisErrorRecovery() {
+  const h = harness(); await h.open();
+  h.el('autoClean').fire('click');
+  const worker = h.last('auto-clean-worker.js');
+  worker.emit({ type: 'error', message: 'Synthetic diagnostic failure' });
+  assert.equal(worker.terminated, true);
+  assert.equal(h.el('autoClean').disabled, false, 'failed diagnosis leaves button available');
+  assert(h.el('error').textContent.includes('Auto Clean failed'));
+  assert(h.el('dlClean').disabled === false, 'existing Cleaned audio stays downloadable');
+}
+
 async function testExportRace() {
   const h = harness(); await h.open();
   h.el('polishApply').fire('click'); h.polishDone();
@@ -443,6 +547,10 @@ async function testOverlappingSourceReadsAndWorkers() {
 }
 
 (async () => {
+  await testAutoCleanWorkflow();
+  await testAutoNoOpAndClickRisk();
+  await testAutoReplacementAndManualCancel();
+  await testAutoAnalysisErrorRecovery();
   await testOverlappingSourceReadsAndWorkers();
   await testDynamicsPresetAndExport();
   await testExperimentalTransientPreviewAndExport();
@@ -454,5 +562,5 @@ async function testOverlappingSourceReadsAndWorkers() {
   await testModeChoice(true);
   await testRecleanTransitions();
   await testExportsAndReplacement();
-  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, dynamics, transients, loudness targets, cleaning transitions, edits and replacement.');
+  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, automatic cleaning, dynamics, transients, loudness targets, cleaning transitions, edits and replacement.');
 })().catch(err => { console.error(err); process.exitCode = 1; });
