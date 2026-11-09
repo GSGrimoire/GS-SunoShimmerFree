@@ -70,6 +70,20 @@ The browser-local meter uses a two-stage K-weighting filter and 400-millisecond 
 
 Reference documents: [ITU-R BS.1770](https://www.itu.int/rec/R-REC-BS.1770) and [EBU R128](https://tech.ebu.ch/publications/r128). Tests: \`node tests/loudness_test.js\` (uses FFmpeg for independent reference), plus the earlier regression suite. This development is stacked on the unmerged dynamic-control branch; do not release before the base work is reviewed.
 
+## Auto Clean (v5e experimental, local diagnostics)
+
+Click **Analyze & Auto Clean** after importing a normal WAV or MP3 song. No file upload, external service, learned instrument classifier, or model download is involved. The processor analyzes up to **16 short, distributed segments** of the source (at most about eight seconds of audio, with a bounded copy rather than a whole second copy per stem) in a local browser worker.
+
+The first version measures approximate sample peaks and suspicious flattened high-level runs, short click-like discontinuities, high-frequency energy during quiet excerpts, and low-mid frequency dominance. These are **indicators, not diagnoses**. A flattened drum hit can mean clipping, hard limiting, or deliberate distortion. Brief clicks can be part of a kick/snare attack. Musical cymbals can look like hiss in a frequency-only test. The report shows counts, explanatory caveats, and the exact selected controls.
+
+If the sampled windows indicate persistent quiet high-frequency energy, the button sets **conservative static/shimmer suppression**, reruns the cleaning stage and updates the current Cleaned version. If low-mid buildup is detected, it also applies at most **25% Clarity** as a Polished version after cleaning. It never automatically turns on presence boosts, compression, transient emphasis or target loudness. If there is only possible clipping/clicking, or no reliable indicator of repairable degradation, the button **does not alter your audio or settings**. Clipped drum waveforms cannot be reconstructed by the existing denoiser; start with the original WAV if possible, compare with less aggressively mastered source audio, or regenerate the source.
+
+As in earlier versions, Original is retained for comparison and all processing stays local. Source replacement cancels pending diagnosis, and manual setting changes during diagnosis or cleaning cancel any queued automatic Polish step. The user can still override all settings manually. The automatic recommendations use fixed thresholds and have not been perceptually validated on a representative Suno corpus. **Do not infer guaranteed improvement from a successful analysis.**
+
+Run \`node tests/auto_clean_test.js\` for clean-source bypass, quiet high-frequency noise, clip-like flattening, impulsive discontinuities, low-mid-heavy material and bounded sampling. \`node tests/polish_integration_test.js\` verifies the actual application state transitions, correct worker inputs, non-destructive response, manual cancellation and source-replacement races.
+
+A current **online preview** is published separately from production at https://gsgrimoire.github.io/GS-SunoShimmerFree/preview/. It is a pinned snapshot and must be republished whenever a new feature branch changes. All stacked features remain drafts until independent review and actual-browser/listening acceptance.
+
 ## Experimental transient emphasis and local preview (v5d, development)
 
 The optional **Transient Emphasis** control attempts to make drum-like attacks clearer without a general upper-treble boost. Its strength is **0% by default** on Natural, Clear, Warm and Forward. The new **Punchy (experimental)** preset starts at a cautious 35%, so users can compare it with 0% on the same percussion passage.
