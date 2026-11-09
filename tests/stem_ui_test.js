@@ -36,7 +36,7 @@ function harness(stems) {
     addEventListener(type,fn){(this.listeners[type] ||= []).push(fn);}
     fire(type){for(const f of this.listeners[type]||[])f.call(this,{target:this,preventDefault(){}});}
     append(...items){this.children.push(...items);}
-    appendChild(el){this.children.push(el);return el;}
+    appendChild(el){this.children.push(el);if(this.tag==='body' && el.id)nodes.set(el.id,el);return el;}
     replaceChildren(...items){this.children=items;}
     remove(){}
     click(){if(this.tag==='a')downloaded.push(this.download);else this.fire('click');}
