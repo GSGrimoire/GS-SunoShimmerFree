@@ -1,5 +1,5 @@
-/* GS SunoShimmerFree Sound Polish background worker v3. */
-importScripts('loudness.js', 'polish.js');
+/* GS SunoShimmerFree Sound Polish background worker v4. */
+importScripts('loudness.js', 'transient.js', 'polish.js');
 self.onmessage = function (event) {
   var m = event.data;
   if (m.type !== 'polish') return;
@@ -8,6 +8,8 @@ self.onmessage = function (event) {
     self.postMessage({ type: 'done', channels: result.channels,
       settings: result.settings, peak: result.peak,
       dynamicMaxReductionDb: result.dynamicMaxReductionDb,
+      transientMaxBandBoostDb: result.transientMaxBandBoostDb,
+      transientActiveSamples: result.transientActiveSamples,
       loudnessBefore: result.loudnessBefore, loudnessAfter: result.loudnessAfter,
       loudnessMessage: result.loudnessMessage,
       normalizationGainDb: result.normalizationGainDb,
