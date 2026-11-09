@@ -354,7 +354,10 @@
       event.preventDefault();
       if (!current() || st.autoWorker !== w) return;
       w.terminate(); st.autoWorker = null;
-      inline();
+      // The original sampled Float32Arrays may have been transferred (detached).
+      // Re-sample safely for a browser where workers are unavailable.
+      try { windows = AutoClean.sampleWindows(st.buffers.original, sr); inline(); }
+      catch (err) { failure(err.message || String(err)); }
     };
     try {
       var transfers = [];
