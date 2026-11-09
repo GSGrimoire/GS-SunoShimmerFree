@@ -662,6 +662,9 @@
     refreshInspector(); drawWave();
     $('editsNote').hidden = Ed.isPristine(st.segs, st.n);
     $('edUndo').disabled = false; $('edReset').disabled = Ed.isPristine(st.segs, st.n);
+    // Keep the pre-edit loudness/clipping disclaimer in sync while a slider
+    // is being dragged, rather than only after its final change event.
+    refreshPolish();
   }
   function inspectorChange() { if (sliderTx) { sliderTx = false; afterEdit(true); } }
 
