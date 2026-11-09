@@ -1,0 +1,7 @@
+{
+  "status": "experimental-preview",
+  "version": "v5d",
+  "source_branch": "feature/sound-polish-v5d-transients",
+  "source_commit": "d27622fce57ac986dbdc6268fb3d38d453eb61b8",
+  "production_unchanged": true
+}
