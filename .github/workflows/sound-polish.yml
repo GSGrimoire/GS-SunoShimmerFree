@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'polish.js'
+      - 'transient.js'
       - 'loudness.js'
       - 'polish-worker.js'
       - 'app.js'
@@ -21,12 +22,16 @@ on:
       - 'tests/edit_test.js'
       - 'tests/polish_test.js'
       - 'tests/dynamics_test.js'
+      - 'tests/transient_test.js'
+      - 'preview_server.py'
+      - 'PREVIEW_TESTING.md'
       - 'tests/loudness_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
   pull_request:
     paths:
       - 'polish.js'
+      - 'transient.js'
       - 'loudness.js'
       - 'polish-worker.js'
       - 'app.js'
@@ -44,6 +49,9 @@ on:
       - 'tests/edit_test.js'
       - 'tests/polish_test.js'
       - 'tests/dynamics_test.js'
+      - 'tests/transient_test.js'
+      - 'preview_server.py'
+      - 'PREVIEW_TESTING.md'
       - 'tests/loudness_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
@@ -62,6 +70,8 @@ jobs:
         run: node tests/polish_test.js
       - name: Test linked dynamics, bypass and peak safety
         run: node tests/dynamics_test.js
+      - name: Test gated transient enhancement and high-frequency restraint
+        run: node tests/transient_test.js
       - name: Test browser-state integration and export races
         run: node tests/polish_integration_test.js
       - name: Install FFmpeg for independent codec validation
@@ -76,3 +86,28 @@ jobs:
         run: |
           node -e 'const fs=require("fs"),w=require("./wav.js"),s=48000,n=s*5,a=Array.from({length:2},(_,c)=>Float32Array.from({length:n},(_,i)=>.2*Math.sin(2*Math.PI*(240+c*190)*i/s)));fs.writeFileSync("/tmp/ssf-edit-fixture.wav",Buffer.from(w.encodeWav(a,s,24)))'
           node tests/edit_test.js /tmp/ssf-edit-fixture.wav /tmp/ssf-edit-test-outputs
+
+      - name: Package local browser preview for acceptance testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: SSF-v5d-browser-preview
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            index.html
+            style.css
+            app.js
+            engine.js
+            edit.js
+            wav.js
+            worker.js
+            polish.js
+            polish-worker.js
+            loudness.js
+            transient.js
+            mp3.js
+            export-worker.js
+            vendor/
+            preview_server.py
+            PREVIEW_TESTING.md
+

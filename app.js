@@ -27,10 +27,11 @@
  *   v5a Optional Sound Polish clarity/presence with presets and a separate version.
  *   v5b Optional linked dynamic control within the same Polished version.
  *   v5c Integrated loudness metering and optional safe target normalization.
+ *   v5d Optional low/mid-band transient emphasis, off by default.
  */
 (function () {
   'use strict';
-  var PAGE_VERSION = '5c';
+  var PAGE_VERSION = '5d';
   var Engine = window.ShimmerEngine, Wav = window.WavCodec, Ed = window.ShimmerEdit, Polish = window.SunoPolish;
   var $ = function (id) { return document.getElementById(id); };
   var PARAMS = ['denoiseStrength', 'maxAttenDb', 'bassHz', 'quietPct', 'shimmer', 'shimmerMaxDb', 'shimmerFromHz'];
@@ -58,6 +59,7 @@
     sourceGeneration: 0, cleanGeneration: 0,
     polishing: false, polishApplied: null, polishGainDb: 0, polishReductionDb: 0,
     polishLoudness: null, polishLimited: false, polishLoudnessMessage: null,
+    polishTransientBandBoostDb: 0,
     segs: null, hist: [], fut: [], sel: null, sec: null, zoom: 1, peaks: {}, peakMax: {}
   };
 
@@ -109,7 +111,7 @@
   // ---------------- optional Sound Polish ----------------
   function readPolishParams() {
     return Polish.settings({ clarity: Number($('polishClarity').value), presence: Number($('polishPresence').value),
-      dynamics: Number($('polishDynamics').value),
+      dynamics: Number($('polishDynamics').value), transients: Number($('polishTransients').value),
       targetLufs: $('polishTarget').value === 'off' ? null : Number($('polishTarget').value) });
   }
   function setPolishPreset(name) {
@@ -119,11 +121,12 @@
     $('polishClarity').value = p.clarity;
     $('polishPresence').value = p.presence;
     $('polishDynamics').value = p.dynamics;
+    $('polishTransients').value = p.transients;
     $('polishTarget').value = 'off';
     refreshPolish(); refreshDownloadControls();
   }
   function refreshPolish() {
-    ['polishClarity', 'polishPresence', 'polishDynamics'].forEach(function (id) {
+    ['polishClarity', 'polishPresence', 'polishDynamics', 'polishTransients'].forEach(function (id) {
       var el = $(id);
       el.parentNode.querySelector('output').textContent = Number(el.value) + '%';
       setFill(el);
@@ -143,6 +146,7 @@
         (st.polishLimited ? ' Target not fully reached due to gain or peak limits.' : '') +
         (st.polishLoudnessMessage ? ' ' + st.polishLoudnessMessage : '') +
         (st.polishReductionDb > 0.05 ? ' Dynamics reduced up to ' + st.polishReductionDb.toFixed(1) + ' dB.' : '') +
+        (st.polishTransientBandBoostDb > 0.05 ? ' Attack-band emphasis up to ' + st.polishTransientBandBoostDb.toFixed(1) + ' dB (experimental).' : '') +
         (st.polishGainDb < -0.01 ? ' Peak protection: ' + st.polishGainDb.toFixed(1) + ' dB.' : '') :
       'Choose a preset, then create a separate Polished version.';
   }
@@ -173,12 +177,13 @@
       st.polishApplied = params;
       st.polishGainDb = res.safetyGainDb;
       st.polishReductionDb = res.dynamicMaxReductionDb || 0;
+      st.polishTransientBandBoostDb = res.transientMaxBandBoostDb || 0;
       st.polishLoudness = res.loudnessAfter === undefined ? null : res.loudnessAfter;
       st.polishLimited = !!res.normalizationLimited;
       st.polishLoudnessMessage = res.loudnessMessage || null;
       st.polishing = false;
       $('metaPolish').textContent = 'Clarity ' + params.clarity + '%, presence ' + params.presence +
-        '%, dynamics ' + params.dynamics + '%, loudness ' +
+        '%, dynamics ' + params.dynamics + '%, transients ' + params.transients + '%, loudness ' +
         (params.targetLufs === null ? 'measured' : params.targetLufs + ' LUFS target');
       setModeAvailability(true);
       // Respect user listening choices made while the worker was running.
@@ -1096,7 +1101,7 @@
     $('apply').addEventListener('click', runProcess);
     $('reset').addEventListener('click', function () { writeParams(Engine.DEFAULTS); });
     $('polishPreset').addEventListener('change', function () { setPolishPreset(this.value); });
-    ['polishClarity', 'polishPresence', 'polishDynamics'].forEach(function (id) {
+    ['polishClarity', 'polishPresence', 'polishDynamics', 'polishTransients'].forEach(function (id) {
       $(id).addEventListener('input', function () {
         $('polishPreset').value = 'custom'; refreshPolish(); refreshDownloadControls();
       });
