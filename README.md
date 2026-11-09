@@ -6,6 +6,16 @@ Automatic static and shimmer removal and optional sound polishing for AI-rendere
 
 Drop in a WAV or MP3, flip between Original, Cleaned, optional Polished, and Removed without losing your place in the song, adjust the settings, trim and tidy the arrangement, and download a WAV or MP3. Everything runs locally in the browser tab, so your track is never uploaded. A four-minute stereo song takes about 15 to 20 seconds to clean on a typical laptop.
 
+## Suno stem ZIP import (v6 draft)
+
+Drop the **original Suno stems .zip** into the browser, or choose **Import stems ZIP** in the header. The local ZIP workspace inspects the archive without immediately decoding its files, groups corresponding WAV and MP3 into one stem, and prefers WAV when both exist. MP3-only exports also work.
+
+You can enable, mute or solo each stem; set its mix volume; independently enable static/shimmer cleaning and stem-specific Sound Polish (clarity, presence, dynamics and an optional loudness target); then **Preview stem** or **Build selected mix**. The compiled stereo result can be played and downloaded as 32-bit float WAV (default), 24/16-bit WAV or 320/256/192-kilobit MP3. No archive contents are uploaded.
+
+The workspace unpacks and processes **one stem at a time** and limits the final decoded stereo mix to 96 MiB. MP3 encoder delays can vary between stems: verify alignment by listening. If decoded lengths or original sample rates differ, the application warns or blocks reconstruction until you explicitly opt into start-aligned padding/trimming and resampling. There is no automatic time shifting or true-peak limiter. Integer WAV and MP3 may clip if the sum exceeds full scale; choose 32-bit float WAV when preserving the original peak values matters.
+
+ZIP inputs must be single-disk, unencrypted ZIP32 with stored or DEFLATE entries, subject to strict limits and corruption checks. Browsers need native raw-DEFLATE streaming (current Chrome, Firefox, Safari and compatible browsers). See [stem ZIP acceptance and test matrix](docs/STEM_ZIP_ACCEPTANCE.md) for the limits, review requirements and known restrictions. This is a **draft feature pending independent review and browser/music validation**, not yet the published version of SunoShimmerFree.
+
 ## What it removes
 
 **Static.** The fluctuating broadband hiss that sounds like a radio between stations. This stage follows the adaptive spectral denoise method shared on r/SunoAI: a noise profile is learned from the quietest frames of the whole track and subtracted gently below 350 Hz, conservatively through the midrange, and most firmly in the top octaves. The gain mask is smoothed over time and frequency so it does not pump or leave "musical noise". Frames of digital silence (fade-ins, tails) are skipped when sampling, because they would otherwise teach the profile that the static is zero.
