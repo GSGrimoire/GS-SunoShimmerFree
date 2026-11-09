@@ -113,6 +113,8 @@ jobs:
             polish-worker.js
             loudness.js
             transient.js
+            auto-clean.js
+            auto-clean-worker.js
             mp3.js
             export-worker.js
             vendor/
