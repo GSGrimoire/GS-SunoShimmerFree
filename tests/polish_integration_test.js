@@ -148,6 +148,7 @@ function harness() {
     const p = Polish.process(job.channels, job.sampleRate, job.params);
     w.emit({ type: 'done', channels: p.channels, safetyGainDb: p.safetyGainDb,
       dynamicMaxReductionDb: p.dynamicMaxReductionDb,
+      transientMaxBandBoostDb: p.transientMaxBandBoostDb,
       loudnessAfter: p.loudnessAfter, loudnessBefore: p.loudnessBefore,
       normalizationLimited: p.normalizationLimited, loudnessMessage: p.loudnessMessage });
   }
@@ -331,6 +332,35 @@ async function testLoudnessPresetAndExport() {
     'changing target invalidates outdated Polished download');
 }
 
+async function testExperimentalTransientPreviewAndExport() {
+  const h = harness(); await h.open();
+  assert.equal(Number(h.el('polishTransients').value), 0,
+    'Natural preset keeps experimental transients off by default');
+  h.preset('punchy');
+  assert.equal(Number(h.el('polishTransients').value), 35,
+    'Punchy preset opts into moderate attack enhancement');
+  h.el('polishApply').fire('click');
+  const worker = h.last('polish-worker.js');
+  assert.equal(worker.messages.at(-1).params.transients, 35,
+    'worker receives transient intensity');
+  h.polishDone();
+  assert.equal(h.el('dlPolish').disabled, false);
+  assert(h.el('metaPolish').textContent.includes('transients 35%'),
+    'Polished metadata explicitly identifies transient processing');
+  h.el('bits').value = 'mp3-320';
+  h.el('dlPolish').fire('click');
+  const pending = h.last('export-worker.js');
+  assert(pending.messages.length, 'new Polished MP3 export starts');
+  h.el('polishTransients').value = '0';
+  h.el('polishTransients').fire('input');
+  assert.equal(h.el('polishPreset').value, 'custom');
+  assert.equal(h.el('dlPolish').disabled, true,
+    'changing transient intensity invalidates old Polished output');
+  pending.emit({ type: 'done', bytes: new Uint8Array([4]), peak: 0.4 });
+  assert.equal(h.downloads.length, 0,
+    'stale transient preset must not finish in-flight export');
+}
+
 async function testDynamicsPresetAndExport() {
   const h = harness(); await h.open();
   h.preset('clear');
@@ -415,6 +445,7 @@ async function testOverlappingSourceReadsAndWorkers() {
 (async () => {
   await testOverlappingSourceReadsAndWorkers();
   await testDynamicsPresetAndExport();
+  await testExperimentalTransientPreviewAndExport();
   await testLoudnessPresetAndExport();
   await testPreEditLoudnessLabel();
   await testLiveLoudnessWarningOnSliderInput();
@@ -423,5 +454,5 @@ async function testOverlappingSourceReadsAndWorkers() {
   await testModeChoice(true);
   await testRecleanTransitions();
   await testExportsAndReplacement();
-  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, dynamics, loudness targets, cleaning transitions, edits and replacement.');
+  console.log('PASS: actual app.js overlapping source reads, old worker messages, stale exports, mode choice, dynamics, transients, loudness targets, cleaning transitions, edits and replacement.');
 })().catch(err => { console.error(err); process.exitCode = 1; });
