@@ -127,11 +127,12 @@
     $('stemSeek').value = length ? Math.round(1000 * now / length) : 0;
     if (playing && now >= length) { stopAudio(); position = 0; }
   }
-  function audioContext() {
+  function audioContext(preferredRate) {
     if (!context) {
       var C = root.AudioContext || root.webkitAudioContext;
       if (!C) throw new Error('This browser does not support local audio playback.');
-      context = new C();
+      try { context = new C({sampleRate: preferredRate || 48000}); }
+      catch (e) { context = new C(); }
     }
     return context;
   }
@@ -271,7 +272,7 @@
   function ensureFresh(gen) { if (gen !== generation) throw new Error('Cancelled.'); }
   function readWav(bytes) {
     var w = Wav.decodeWav(bytes);
-    return {channels: w.channels, sr: w.sampleRate, kind:'WAV'};
+    return {channels: w.channels, sr: w.sampleRate, originalRate: w.sampleRate, kind:'WAV'};
   }
   function sniffMp3Rate(bytes) {
     var a = new Uint8Array(bytes), start = 0;
@@ -307,10 +308,9 @@
       data = readWav(bytes);
     } else {
       var rate = sniffMp3Rate(bytes);
-      if (targetRate && rate && rate !== targetRate && !$('stemAllowMismatch').checked)
-        throw new Error(stem.name + ' reports ' + rate + ' Hz; the mix is ' + targetRate +
-          ' Hz. Enable explicit length/rate mismatch handling after listening to each stem.');
-      var ctx = audioContext();
+      // decodeAudioData resamples to the AudioContext rate, which may differ
+      // from the MP3's native header rate. Compare native rates separately.
+      var ctx = audioContext(targetRate || rate || 48000);
       var decoded = await ctx.decodeAudioData(bytes);
       data = {channels: Array.from({length: decoded.numberOfChannels}, function(_, c) {
         return decoded.getChannelData(c).slice();
@@ -380,13 +380,20 @@
     }
     var mismatchMessages = [];
     try {
-      var rate=0, frames=0, allocated=0;
+      var rate=0, frames=0, allocated=0, firstNativeRate=0;
       for (var i=0;i<selected.length;i++) {
         ensureFresh(gen);
         var s=selected[i];
         status('Stem ' + (i+1) + ' of ' + selected.length + ': ' + s.name);
         var data=await decodeStem(s,gen,rate || null);
         ensureFresh(gen);
+        if (!firstNativeRate) firstNativeRate = data.originalRate || data.sr;
+        else if (data.originalRate && firstNativeRate !== data.originalRate) {
+          mismatchMessages.push(s.name + ' native sample rate is ' + data.originalRate +
+            ' Hz; first stem is ' + firstNativeRate + ' Hz.');
+          if (!$('stemAllowMismatch').checked)
+            throw new Error('Source sample rates differ. Enable explicit mismatch handling or export individual stems.');
+        }
         if (!rate) {
           rate=data.sr;frames=data.channels[0].length;
           allocated=frames*2*4;
