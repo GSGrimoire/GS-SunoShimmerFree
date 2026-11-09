@@ -70,6 +70,22 @@ The browser-local meter uses a two-stage K-weighting filter and 400-millisecond 
 
 Reference documents: [ITU-R BS.1770](https://www.itu.int/rec/R-REC-BS.1770) and [EBU R128](https://tech.ebu.ch/publications/r128). Tests: \`node tests/loudness_test.js\` (uses FFmpeg for independent reference), plus the earlier regression suite. This development is stacked on the unmerged dynamic-control branch; do not release before the base work is reviewed.
 
+## Experimental transient emphasis and local preview (v5d, development)
+
+The optional **Transient Emphasis** control attempts to make drum-like attacks clearer without a general upper-treble boost. Its strength is **0% by default** on Natural, Clear, Warm and Forward. The new **Punchy (experimental)** preset starts at a cautious 35%, so users can compare it with 0% on the same percussion passage.
+
+The enhancer tracks rapidly changing versus slower **root-mean-square energy** in a band concentrated between roughly 55 and 850 hertz. It uses linked onset detection for all channels, a quiet-signal gate to avoid raising low-level tails, and limits added band energy to a maximum 35% at the most aggressive setting. The band-limited contribution is applied after gentle compression and before integrated loudness measurement and linked sample-peak protection. It does **not** reconstruct missing musical transients, guarantee better sound, remove reverberation, or replace stem-level editing. Its response to real Suno artifacts has not yet been validated by listening.
+
+**Limitations and risks:** Emphasizing percussive attacks can make drums harsher or accentuate source artifacts even if high-frequency shimmer itself is not boosted significantly. Stereo-linked detection is not the same as exact stereo-image preservation for unrelated channel material. The 0.97 ceiling is sample-peak, not a true-peak limiter, and the existing timeline editor can boost post-polish levels further.
+
+Run \`node tests/transient_test.js\` for bypass, onset response, high-frequency isolation, silence, steady tones, linked stereo behavior, and peak safety. The existing integration test checks that changing transient intensity invalidates an older Polished export.
+
+### Browser acceptance preview
+
+The draft branch also has an optional **local browser preview package** produced by its GitHub Actions run. From the latest successful [Sound Polish checks](https://github.com/GSGrimoire/GS-SunoShimmerFree/actions/workflows/sound-polish.yml) for the \`feature/sound-polish-v5d-transients\` branch, download the **SSF-v5d-browser-preview** artifact under **Artifacts**. Extract it, then launch \`preview_server.py\` with Python 3 as detailed in [PREVIEW_TESTING.md](PREVIEW_TESTING.md). The preview binds only to localhost and keeps private songs on your computer. Do **not** use the existing production GitHub Pages link to evaluate these unmerged features.
+
+The feature is stacked on v5c, v5b, and v5a drafts. All four releases need independent code review in sequence, then actual browser and level-matched listening acceptance before they can be merged. The native Suno stem ZIP importer remains a separate [future item](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/4).
+
 ## Editing
 
 Under the versions list is a waveform of the song, split into sections. Edits never touch the audio itself: they are a list of which stretches play, in what order, at what volume and with what fades, so every step can be undone and the same edit applies to Original, Cleaned and Removed alike.
