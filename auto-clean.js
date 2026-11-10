@@ -6,6 +6,12 @@
 (function (root) {
   'use strict';
   var LIMIT = 16, SAMPLES_PER_WINDOW = 24000;
+  function median(values) {
+    if (!values.length) return 0;
+    var sorted = values.slice().sort(function (a,b) { return a - b; });
+    var mid = sorted.length >> 1;
+    return (sorted.length & 1) ? sorted[mid] : 0.5 * (sorted[mid - 1] + sorted[mid]);
+  }
 
   // Copy only a few distributed windows instead of transferring complete songs.
   function sampleWindows(buffer, sampleRate) {
@@ -19,13 +25,25 @@
     var len = Math.min(n, SAMPLES_PER_WINDOW, Math.max(2048, Math.round(sr * 0.5)));
     var count = Math.min(LIMIT, Math.max(1, Math.floor(n / len)));
     var result = [];
+    // Give the final 15% its own windows so a localized ending defect
+    // cannot disappear among uniformly distributed or louder verses.
+    var bodyCount = count < 6 ? count : Math.ceil(count / 2);
+    var tailCount = count - bodyCount;
+    var maxStart = n - len, tailStart = Math.min(maxStart, Math.floor(n * 0.85));
+    var bodyEnd = tailCount ? Math.max(0, tailStart - len) : maxStart;
     for (var w = 0; w < count; w++) {
-      var start = count === 1 ? 0 : Math.round((n - len) * w / (count - 1));
+      var inTail = w >= bodyCount, slot = inTail ? w - bodyCount : w;
+      var windowsInRegion = inTail ? tailCount : bodyCount;
+      var regionStart = inTail ? tailStart : 0;
+      var regionEnd = inTail ? maxStart : bodyEnd;
+      var start = windowsInRegion === 1 ? regionStart :
+        Math.round(regionStart + (regionEnd - regionStart) * slot / (windowsInRegion - 1));
       var chans = [];
       for (var c = 0; c < C; c++) {
         chans.push(buffer.getChannelData(c).slice(start, start + len));
       }
-      result.push({ channels: chans });
+      result.push({ channels: chans, region: inTail ? 'tail' : 'body',
+        startSeconds: start / sr });
     }
     return result;
   }
@@ -41,7 +59,7 @@
     var lp6000 = Math.exp(-2 * Math.PI * Math.min(6000, sr * 0.35) / sr);
     var peak = 0, totalPower = 0, totalSamples = 0;
     var flatHits = 0, impulseHits = 0, quietHighWindows = 0, lowMidHeavy = 0;
-    var windowSummaries = [];
+    var windowSummaries = [], bodyHighShares = [], tailHighShares = [];
 
     for (var w = 0; w < windows.length; w++) {
       var chans = windows[w] && windows[w].channels;
@@ -89,18 +107,30 @@
       var muddy = rms > 0.025 && mudShare > 0.70 && lowMidE / (sum + 1e-18) > 0.27;
       if (highInQuiet) quietHighWindows++;
       if (muddy) lowMidHeavy++;
+      if (rms > 0.018) {
+        if (windows[w].region === 'tail') tailHighShares.push(hiShare);
+        else bodyHighShares.push(hiShare);
+      }
       flatHits += flatInWindow;
       impulseHits += impulsesInWindow;
       totalPower += sum;
       totalSamples += n * C;
       windowSummaries.push({
         rms: rms, highShare: hiShare, lowMidShare: mudShare,
+        region: windows[w].region || 'unspecified',
+        startSeconds: Number.isFinite(windows[w].startSeconds) ? windows[w].startSeconds : null,
         flatTopEvents: flatInWindow, clickLikeEvents: impulsesInWindow
       });
     }
 
+    var bodyMedian = median(bodyHighShares), tailMedian = median(tailHighShares);
+    var tailLiftDb = bodyHighShares.length >= 3 && tailHighShares.length >= 3 ?
+      10 * Math.log10((tailMedian + 1e-10) / (bodyMedian + 1e-10)) : null;
     var evidence = {
       peak: peak, rms: Math.sqrt(totalPower / totalSamples),
+      bodyHighBandRatio: bodyMedian, tailHighBandRatio: tailMedian,
+      tailHighBandLiftDb: tailLiftDb, bodyWindows: bodyHighShares.length,
+      tailWindows: tailHighShares.length,
       flatTopEvents: flatHits, clickLikeEvents: impulseHits,
       quietTrebleWindows: quietHighWindows, lowMidHeavyWindows: lowMidHeavy,
       sampledWindows: windows.length, sampledSeconds: totalSamples / (sr * windows[0].channels.length)
@@ -115,6 +145,11 @@
     var clicks = m.clickLikeEvents >= 3;
     var noisy = m.quietTrebleWindows >= Math.max(2, Math.ceil(m.sampledWindows * 0.2));
     var muddy = m.lowMidHeavyWindows >= Math.max(2, Math.ceil(m.sampledWindows * 0.5));
+    // This is only a potential change in tonal balance, not a determination
+    // that music's high-frequency content is noise.
+    var tailShimmerCandidate = Number.isFinite(m.tailHighBandLiftDb) &&
+      m.tailWindows >= 3 && m.bodyWindows >= 3 &&
+      m.tailHighBandRatio >= 0.003 && m.tailHighBandLiftDb >= 4.0;
     // These are hypotheses from partial song windows, not source separation.
     if (clipping) {
       warnings.push('Repeated flattened high-level peaks may indicate clipping or hard limiting. The current tools cannot reconstruct damaged drum hits.');
@@ -128,21 +163,28 @@
     if (muddy) {
       notes.push('Low-mid energy dominates several sampled passages. A small clarity cut may help, but bass-heavy music can trigger the same signal.');
     }
+    if (Number.isFinite(m.tailHighBandLiftDb)) {
+      notes.push('The final part has ' + m.tailHighBandLiftDb.toFixed(1) +
+        ' dB relative high-band change compared with earlier sampled passages.');
+    }
+    if (tailShimmerCandidate) {
+      warnings.push('The end has more high-frequency energy than earlier sections. This can be cymbals or intentional music, not necessarily shimmer. Only a restrained shimmer-only trial is selected, with static reduction off.');
+    }
     var clean = {
-      denoise: !!noisy,
+      denoise: !!noisy && !tailShimmerCandidate,
       denoiseStrength: noisy ? (clipping ? 0.55 : 0.7) : 0.65,
       maxAttenDb: noisy ? 4.5 : 4,
       quietPct: 10,
       bassHz: 350,
-      shimmer: noisy ? (clipping ? 0.2 : 0.35) : 0,
-      shimmerMaxDb: noisy ? 4 : 3,
-      shimmerFromHz: 5500
+      shimmer: tailShimmerCandidate ? 0.75 : (noisy ? (clipping ? 0.2 : 0.35) : 0),
+      shimmerMaxDb: tailShimmerCandidate ? 6 : (noisy ? 4 : 3),
+      shimmerFromHz: tailShimmerCandidate ? 6000 : 5500
     };
     var polish = {
       clarity: muddy ? 25 : 0, presence: 0,
       dynamics: 0, transients: 0, targetLufs: null
     };
-    var shouldProcess = noisy || muddy;
+    var shouldProcess = noisy || muddy || tailShimmerCandidate;
     if (!shouldProcess) {
       notes.push(clipping || clicks ?
         'No automatic processing is recommended for these defects. Check the original WAV or re-render; avoid adding transient/presence boosts.' :
@@ -157,7 +199,8 @@
       polish: polish,
       applyPolish: muddy,
       metrics: m,
-      findings: { clipping: clipping, clicks: clicks, noisy: noisy, muddy: muddy },
+      findings: { clipping: clipping, clicks: clicks, noisy: noisy, muddy: muddy,
+        tailShimmerCandidate: tailShimmerCandidate },
       explanation: notes.concat(warnings).join(' '),
       warnings: warnings,
       notes: notes
@@ -165,7 +208,7 @@
   }
 
   var api = {
-    VERSION: '1', sampleWindows: sampleWindows, analyze: analyze, recommend: recommend,
+    VERSION: '2', sampleWindows: sampleWindows, analyze: analyze, recommend: recommend,
     inspect: function (windows, sampleRate) { return recommend(analyze(windows, sampleRate)); }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
