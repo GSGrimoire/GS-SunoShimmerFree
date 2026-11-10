@@ -29,10 +29,11 @@
  *   v5c Integrated loudness metering and optional safe target normalization.
  *   v5d Optional low/mid-band transient emphasis, off by default.
  *   v5e Bounded local Auto Clean analysis with conservative recommendations.
+ *   v5f Localized end-of-track diagnostics and optional shimmer-only audition.
  */
 (function () {
   'use strict';
-  var PAGE_VERSION = '5e';
+  var PAGE_VERSION = '5f';
   var Engine = window.ShimmerEngine, Wav = window.WavCodec, Ed = window.ShimmerEdit,
       Polish = window.SunoPolish, AutoClean = window.SunoAutoClean;
   var $ = function (id) { return document.getElementById(id); };
@@ -101,6 +102,7 @@
   function refreshDirty() {
     var loaded = !!st.buffers.original, dirty = loaded && !sameParams(readParams(), st.applied);
     $('apply').disabled = !loaded || !dirty || st.busy;
+    $('shimmerFocus').disabled = !loaded || st.busy || st.polishing;
     $('applyNote').textContent = !loaded ? 'Upload a track to start.' :
       st.busy ? 'Cleaning with these settings.' :
       dirty && st.applied ? 'Settings changed. Clean again to hear them.' : '';
@@ -274,7 +276,10 @@
     $('autoStatus').textContent = shortText;
     $('autoReport').textContent =
       'Sampled ' + m.sampledWindows + ' distributed passages (' + m.sampledSeconds.toFixed(1) +
-      ' seconds). Observed peak ' + m.peak.toFixed(3) +
+      ' seconds). ' + (Number.isFinite(m.tailHighBandLiftDb) ?
+        'End versus earlier high-frequency change: ' + m.tailHighBandLiftDb.toFixed(1) +
+        ' dB (candidate only, not proof of shimmer). ' : '') +
+      'Observed peak ' + m.peak.toFixed(3) +
       ', flat-top events ' + m.flatTopEvents + ', click-like discontinuities ' +
       m.clickLikeEvents + ', quiet treble-rich windows ' + m.quietTrebleWindows +
       ', low-mid-heavy windows ' + m.lowMidHeavyWindows + '.\n\n' +
@@ -1264,6 +1269,19 @@
     });
     $('apply').addEventListener('click', function () { cancelAuto(); runProcess(); });
     $('autoClean').addEventListener('click', runAutoClean);
+    $('shimmerFocus').addEventListener('click', function () {
+      if (!st.buffers.original || st.busy || st.polishing) return;
+      cancelAuto();
+      // No broad spectral subtraction: it removed recognisable instruments
+      // on real-audio evaluation. This is a reversible audition, not a
+      // de-reverb or instrument-aware restoration process.
+      writeParams(Object.assign({}, readParams(), {
+        denoise: false, shimmer: 0.8, shimmerMaxDb: 6, shimmerFromHz: 6000
+      }));
+      $('autoStatus').textContent =
+        'Shimmer Focus selected: static off, shimmer 80%, maximum cut 6 dB above 6 kHz. Compare at matched loudness.';
+      runProcess(false);
+    });
     $('reset').addEventListener('click', function () {
       // Reset is an explicit manual decision. Obsolete analysis must not
       // overwrite the reset settings or start cleaning after this click.
