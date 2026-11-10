@@ -262,6 +262,46 @@ async function testAutoReplacementAndManualCancel() {
   assert.equal(h.workers.filter(w => w.url === 'polish-worker.js').length, beforePolish,
     'manually edited polish parameters must cancel queued Auto Clean polishing');
 }
+async function testAutoResetCancelsQueuedDiagnosis() {
+  const h = harness(); await h.open();
+  h.el('denoiseStrength').value = '1.7';
+  h.el('autoClean').fire('click');
+  const pending = h.last('auto-clean-worker.js');
+  assert(pending && pending.messages.length, 'diagnostic worker has started');
+  h.el('reset').fire('click');
+  assert.equal(pending.terminated, true, 'Reset terminates analysis worker');
+  assert.equal(Number(h.el('denoiseStrength').value), 1,
+    'Reset retains default settings instead of an obsolete recommendation');
+  assert(h.el('autoStatus').textContent.includes('cancelled'),
+    'status must not claim analysis is ongoing after cancellation');
+  const workerCount = h.workers.length;
+  pending.emit({ type: 'done', result: makeAutoPlan({ noisy: true, muddy: true }) });
+  assert.equal(h.workers.length, workerCount, 'stale recommendation cannot start cleaning after Reset');
+  assert.equal(Number(h.el('maxAttenDb').value), 7,
+    'Reset defaults cannot be overwritten by stale Auto Clean completion');
+
+  h.el('autoClean').fire('click');
+  const aborted = h.last('auto-clean-worker.js');
+  h.el('shimmer').value = '0.25';
+  h.el('shimmer').fire('input');
+  assert.equal(aborted.terminated, true, 'manual slider cancels new analysis');
+  assert(h.el('autoStatus').textContent.includes('cancelled'),
+    'manual slider cancellation clears misleading analysis-underway status');
+
+  // Cancel the queued automatic Polish step while the current cleaning job
+  // is still running; its completion must not apply the abandoned suggestion.
+  h.el('autoClean').fire('click');
+  h.last('auto-clean-worker.js').emit({ type: 'done',
+    result: makeAutoPlan({ noisy: true, muddy: true }) });
+  const polishBefore = h.workers.filter(w => w.url === 'polish-worker.js').length;
+  h.el('reset').fire('click');
+  assert(h.el('autoStatus').textContent.includes('cancelled'),
+    'Reset cancels queued automatic Polish and reports it');
+  h.cleanDone();
+  assert.equal(h.workers.filter(w => w.url === 'polish-worker.js').length, polishBefore,
+    'queued automatic Polish cannot execute after Reset');
+}
+
 async function testAutoAnalysisErrorRecovery() {
   const h = harness(); await h.open();
   h.el('autoClean').fire('click');
@@ -551,6 +591,7 @@ async function testOverlappingSourceReadsAndWorkers() {
   await testAutoNoOpAndClickRisk();
   await testAutoReplacementAndManualCancel();
   await testAutoAnalysisErrorRecovery();
+  await testAutoResetCancelsQueuedDiagnosis();
   await testOverlappingSourceReadsAndWorkers();
   await testDynamicsPresetAndExport();
   await testExperimentalTransientPreviewAndExport();
