@@ -51,6 +51,7 @@
     title: '', sr: 0, n: 0, buffers: { original: null, clean: null, removed: null },
     specs: {}, top: 0, applied: null, worker: null, busy: false, mode: 'original', split: 50,
     offset: 0, playing: false, exportWorker: null,
+    sourceGeneration: 0, cleanGeneration: 0,
     segs: null, hist: [], fut: [], sel: null, sec: null, zoom: 1, peaks: {}, peakMax: {}
   };
 
@@ -133,10 +134,14 @@
   }
 
   function loadFile(file) {
+    // Older reads/decoders must never replace the latest selected track.
+    var sourceGen = ++st.sourceGeneration;
+    ++st.cleanGeneration;
     cancelExport();
     hideError();
     stopPlayback(); st.offset = 0;
     if (st.worker) { st.worker.terminate(); st.worker = null; }
+    st.busy = false;
     st.buffers = { original: null, clean: null, removed: null }; st.specs = {}; st.applied = null; st.everCleaned = false;
     st.peaks = {}; st.peakMax = {};
     setModeAvailability(false); setMode('original');
@@ -149,6 +154,7 @@
     showLoaded(); showBusy('Opening ' + file.name, 0);
 
     file.arrayBuffer().then(function (ab) {
+      if (sourceGen !== st.sourceGeneration) return null;
       var u8 = new Uint8Array(ab), isWav = u8.length > 12 && String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) === 'RIFF';
       if (isWav) {
         try {
@@ -168,6 +174,7 @@
         throw new Error('This browser could not decode ' + file.name + '. Convert it to WAV or MP3 and try again.');
       });
     }).then(function (d) {
+      if (sourceGen !== st.sourceGeneration || !d) return;
       st.sr = d.sr;
       st.buffers.original = makeBuffer(d.chans, d.sr);
       var b = st.buffers.original;
@@ -183,6 +190,7 @@
       refreshDirty();
       runProcess();
     }).catch(function (e) {
+      if (sourceGen !== st.sourceGeneration) return;
       hideBusy();
       if (!st.buffers.original) showUpload();
       showError(e.message || String(e));
@@ -192,6 +200,8 @@
   // ---------------- processing ----------------
   function runProcess() {
     if (!st.buffers.original) return;
+    var sourceGen = st.sourceGeneration, cleanGen = ++st.cleanGeneration;
+    function isCurrent() { return sourceGen === st.sourceGeneration && cleanGen === st.cleanGeneration; }
     cancelExport();
     if (st.worker) { st.worker.terminate(); st.worker = null; }
     hideError();
@@ -199,13 +209,15 @@
     st.busy = true; refreshDirty(); showBusy('Reading the track', 0);
 
     var handlers = {
-      progress: function (f, stage) { showBusy(stage, f); },
+      progress: function (f, stage) { if (isCurrent()) showBusy(stage, f); },
       spectrogram: function (kind, spec) {
+        if (!isCurrent()) return;
         st.specs[kind] = spec;
         if (kind === 'original') st.top = topOf(spec.data);
         drawSpectra();
       },
       done: function (res) {
+        if (!isCurrent()) return;
         st.buffers.clean = makeBuffer(res.clean, sr);
         st.buffers.removed = makeBuffer(res.removed, sr);
         computePeaks('clean'); computePeaks('removed');
@@ -220,6 +232,7 @@
         if (st.playing) restartPlayback();
       },
       error: function (msg) {
+        if (!isCurrent()) return;
         st.busy = false; hideBusy(); refreshDirty();
         showError('Cleaning failed: ' + msg);
       }
@@ -227,9 +240,11 @@
 
     var started = false, w = null;
     function inline() {
+      if (!isCurrent()) return;
       // file:// pages cannot start workers; run on the page instead (it pauses while it works)
       showBusy('Cleaning on this page; it will pause until done', 0.02);
       setTimeout(function () {
+        if (!isCurrent()) return;
         try {
           var res = Engine.process(channelsOf(st.buffers.original, true), sr, params, { spectrogram: handlers.spectrogram });
           handlers.done(res);
@@ -240,15 +255,20 @@
     if (!w) { inline(); return; }
     st.worker = w;
     w.onmessage = function (e) {
+      if (!isCurrent() || st.worker !== w) return;
       var m = e.data; started = true;
       if (m.type === 'progress') handlers.progress(m.fraction, m.stage);
       else if (m.type === 'spectrogram') handlers.spectrogram(m.kind, m.spec);
-      else if (m.type === 'done') { handlers.done(m); w.terminate(); if (st.worker === w) st.worker = null; }
-      else if (m.type === 'error') { handlers.error(m.message); w.terminate(); }
+      else if (m.type === 'done' || m.type === 'error') {
+        w.terminate(); st.worker = null;
+        if (m.type === 'done') handlers.done(m);
+        else handlers.error(m.message || 'Unknown worker error');
+      }
     };
     w.onerror = function (e) {
       e.preventDefault();
-      if (st.worker === w) st.worker = null;
+      if (!isCurrent() || st.worker !== w) return;
+      st.worker = null;
       w.terminate();
       if (!started) inline(); else handlers.error(e.message || 'the worker stopped');
     };
