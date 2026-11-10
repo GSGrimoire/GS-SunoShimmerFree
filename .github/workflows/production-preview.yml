@@ -1,0 +1,37 @@
+name: Production and online preview safety
+
+on:
+  push:
+    paths:
+      - 'app.js'
+      - 'index.html'
+      - 'edit.js'
+      - 'wav.js'
+      - 'preview/**'
+      - 'tests/production_load_race_test.js'
+      - 'tests/preview_bundle_test.js'
+      - '.github/workflows/production-preview.yml'
+  pull_request:
+    paths:
+      - 'app.js'
+      - 'index.html'
+      - 'edit.js'
+      - 'wav.js'
+      - 'preview/**'
+      - 'tests/production_load_race_test.js'
+      - 'tests/preview_bundle_test.js'
+      - '.github/workflows/production-preview.yml'
+jobs:
+  browser-safety:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Production overlapping source and stale-worker regression
+        run: node tests/production_load_race_test.js
+      - name: Validate online preview resources and worker dependencies
+        run: node tests/preview_bundle_test.js
