@@ -1,0 +1,8 @@
+{
+  "status": "experimental-unmerged-preview",
+  "variant": "localized-shimmer",
+  "source_branch": "feature/sound-polish-v5f-localized-shimmer",
+  "source_commit": "0308d2d3778c088edd5542bb0a9ea39841f7eda0",
+  "production_unchanged": true,
+  "distinct_from_autoclean_preview": true
+}

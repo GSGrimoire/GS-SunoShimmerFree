@@ -52,9 +52,14 @@ verify('preview',{
  workers:['worker.js','polish-worker.js','auto-clean-worker.js','export-worker.js'],
  required:['auto-clean.js','id="autoClean"']
 });
+verify('preview-shimmer',{
+ label:'SHIMMER TEST v5f',
+ workers:['worker.js','polish-worker.js','auto-clean-worker.js','export-worker.js'],
+ required:['auto-clean.js','id="autoClean"','id="shimmerFocus"']
+});
 verify('preview-stems',{
  label:'STEMS TEST',
  workers:['worker.js','polish-worker.js','stem-audio-worker.js','export-worker.js'],
  required:['stem-zip.js','stem-resample.js','stem-ui.js','Import stems ZIP']
 });
-console.log('PASS both experimental previews and production isolation.');
+console.log('PASS all three experimental previews and production isolation.');
