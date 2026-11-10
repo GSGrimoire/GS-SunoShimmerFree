@@ -254,11 +254,16 @@
     button.textContent = st.autoAnalyzing ? 'Analyzing locally...' : 'Analyze & Auto Clean';
   }
   function cancelAuto() {
+    var wasActive = st.autoAnalyzing || !!st.autoPendingPolish;
     st.autoGeneration++;
     if (st.autoWorker) st.autoWorker.terminate();
     st.autoWorker = null;
     st.autoAnalyzing = false;
     st.autoPendingPolish = null;
+    if (wasActive) {
+      $('autoStatus').textContent =
+        'Auto Clean cancelled. Manual settings are now in control.';
+    }
     refreshAuto();
   }
   function autoReport(result) {
@@ -1259,7 +1264,11 @@
     });
     $('apply').addEventListener('click', function () { cancelAuto(); runProcess(); });
     $('autoClean').addEventListener('click', runAutoClean);
-    $('reset').addEventListener('click', function () { writeParams(Engine.DEFAULTS); });
+    $('reset').addEventListener('click', function () {
+      // Reset is an explicit manual decision. Obsolete analysis must not
+      // overwrite the reset settings or start cleaning after this click.
+      cancelAuto(); writeParams(Engine.DEFAULTS);
+    });
     $('polishPreset').addEventListener('change', function () { cancelAuto(); setPolishPreset(this.value); });
     ['polishClarity', 'polishPresence', 'polishDynamics', 'polishTransients'].forEach(function (id) {
       $(id).addEventListener('input', function () {
