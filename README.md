@@ -70,6 +70,18 @@ The browser-local meter uses a two-stage K-weighting filter and 400-millisecond 
 
 Reference documents: [ITU-R BS.1770](https://www.itu.int/rec/R-REC-BS.1770) and [EBU R128](https://tech.ebu.ch/publications/r128). Tests: \`node tests/loudness_test.js\` (uses FFmpeg for independent reference), plus the earlier regression suite. This development is stacked on the unmerged dynamic-control branch; do not release before the base work is reviewed.
 
+## Shimmer Focus and localized Auto Clean (v5f experimental)
+
+The separate [v5f listening test page](https://gsgrimoire.github.io/GS-SunoShimmerFree/preview-shimmer/) is an unmerged experimental build. It keeps the previously published [v5e Auto Clean page](https://gsgrimoire.github.io/GS-SunoShimmerFree/preview/) intact for a direct comparison. The production site remains on the earlier stable root build.
+
+**Try Shimmer Focus (static off)** in the Shimmer settings after uploading a track. It automatically sets static subtraction OFF, shimmer amount 80%, maximum shimmer attenuation 6 decibels, and start frequency 6,000 hertz. It runs the normal cleaning worker while preserving the original track for comparison. Unlike a strong broadband static pass, it should avoid most *midrange* musical removal. It can still affect high-frequency music and may not noticeably suppress unwanted sound. It is **not an echo/reverberation remover**.
+
+Auto Clean now reserves eight of its 16 sampling windows for the final 15% of the song and compares median high-band shares against earlier windows. A tail candidate requires at least 4 decibels relative increase and sufficient high-frequency share/valid windows. This is a **tonal change**, not a trustworthy classification of shimmer: cymbals, arrangement changes, and real high-frequency instruments can produce the same metrics. If the user explicitly requests Auto Clean and the tail candidate is strong, it tries conservative shimmer-only settings with static reduction OFF. When evidence is weak, Auto Clean can still say no safe automatic repair is indicated. In that case, the Shimmer Focus button remains a manual audition option.
+
+The processing pass applies to the whole song; only the *diagnostic sampling* prioritizes the ending. Comparing equal-loudness Original, Cleaned and Removed is essential. Because Removed is mathematically Original minus Cleaned, the presence of melody in Removed reveals overlap with the musical spectrum, not necessarily a software bug.
+
+New regressions test tail-only high-band contrast versus uniformly bright music, fixed-window budget, and actual application worker settings for Shimmer Focus. The current audio engine and static-subtraction algorithm are otherwise unchanged. Automated tests do not certify improved sound quality on real Suno tracks. A listening check on several private examples is required before any merge.
+
 ## Auto Clean (v5e experimental, local diagnostics)
 
 Click **Analyze & Auto Clean** after importing a normal WAV or MP3 song. No file upload, external service, learned instrument classifier, or model download is involved. The processor analyzes up to **16 short, distributed segments** of the source (at most about eight seconds of audio, with a bounded copy rather than a whole second copy per stem) in a local browser worker.
