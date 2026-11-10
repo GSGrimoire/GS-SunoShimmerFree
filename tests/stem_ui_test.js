@@ -5,7 +5,8 @@
 'use strict';
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const wav=require('../wav.js'),Polish=require('../polish.js'),Engine=require('../engine.js');
+const wav=require('../wav.js'),Polish=require('../polish.js'),Engine=require('../engine.js'),
+  Resample=require('../stem-resample.js');
 const source=fs.readFileSync(path.join(__dirname,'../stem-ui.js'),'utf8');
 function samples(level,sr,seconds) {
   return Float32Array.from({length:Math.round(sr*seconds)},()=>level);
@@ -78,7 +79,8 @@ function harness(stems) {
   }
   const archive={stems,file:{name:'Synthetic Stems.zip'},compressedBytes:2000,totalBytes:stems.reduce((sum,x)=>sum+x._file.byteLength,0),
     async extract(entry){const s=stems.find(x=>x.entry===entry);if(!s)throw Error('Missing synthetic entry');return s._file;}};
-  const root={SunoStemZip:{open:async()=>archive},WavCodec:wav,ShimmerEngine:Engine,AudioContext:AC,
+  const root={SunoStemZip:{open:async()=>archive},WavCodec:wav,ShimmerEngine:Engine,
+    SunoStemResample:Resample,AudioContext:AC,
     confirm:()=>true};
   const URLs={createObjectURL:()=> 'blob:synthetic',revokeObjectURL(){}};
   const ctx={window:root,document,Worker,Blob,URL:URLs,console,Float32Array,Uint8Array,
