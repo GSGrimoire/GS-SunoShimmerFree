@@ -21,6 +21,14 @@ This feature is **not released**. It is implemented on a draft branch stacked on
 - When explicitly enabling a sample-rate mismatch, the conversion uses a **64-tap band-limited, windowed-sinc** filter with precalculated phases. High-frequency energy beyond the lower sample rate's Nyquist limit is attenuated instead of aliasing into the audible band. The highest valid frequencies are rolled off slightly as the price of this protection. This operation may be computationally expensive on long stems and has not yet been listened to in a browser.
 - The compiled mix and individual previews are downloadable as 16/24/32-bit WAV or 192/256/320 kilobit-per-second MP3. The default is **32-bit float WAV** to preserve peaks above full scale. Integer WAV and MP3 exports warn before clipping if the mix exceeds full scale. The MP3 encoder runs in a separate worker.
 
+## ZIP end-of-directory compatibility fix
+
+A user reported the stem importer showing “ZIP: multi-volume archives are unsupported” when opening an archive. The parser could previously select an **end-of-directory-like record inside a valid ZIP comment** rather than the archive's real record. It now searches for a consistent single-volume end record and distinguishes true split archives and ZIP64 limitations. A synthetic test constructs a normal single-volume archive with a false split-looking record in its comment and verifies successful extraction; a separate genuine split-record test must still fail.
+
+**Important:** This reproduces one plausible false positive, not necessarily the exact archive that triggered the user's screenshot. The 24-entry 363-megabyte private reference ZIP was inspected separately with Python and its real end record has disk numbers zero. If the same archive still fails in the updated test site, collect the exact new error message and optionally inspect the archive locally. Do not publish the private stems.
+
+An updated experimental ZIP test snapshot is at https://gsgrimoire.github.io/GS-SunoShimmerFree/preview-stems/. Try the same archive again and report whether it imports and can reconstruct a mix. Successful ZIP parsing alone does not prove that stereo/time alignment or audible quality is correct.
+
 ## Acceptance matrix, required before merge
 
 1. On a current Chrome, Firefox, Safari and a representative mobile device, drop a standard ZIP **anywhere** on the published test page and choose one from the file picker. Confirm that the existing single-track editor still opens WAV and MP3 normally.
