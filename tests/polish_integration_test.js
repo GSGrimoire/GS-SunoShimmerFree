@@ -262,6 +262,28 @@ async function testAutoReplacementAndManualCancel() {
   assert.equal(h.workers.filter(w => w.url === 'polish-worker.js').length, beforePolish,
     'manually edited polish parameters must cancel queued Auto Clean polishing');
 }
+async function testShimmerFocusAudition() {
+  const h = harness(); await h.open();
+  assert.equal(h.el('shimmerFocus').disabled, false,
+    'Shimmer Focus is available after a source has loaded');
+  h.el('shimmerFocus').fire('click');
+  assert.equal(h.el('denoise').checked,false,
+    'shimmer audition must bypass static noise subtraction');
+  assert.equal(Number(h.el('shimmer').value),0.8);
+  assert.equal(Number(h.el('shimmerMaxDb').value),6);
+  assert.equal(Number(h.el('shimmerFromHz').value),6000);
+  const worker = h.last('worker.js');
+  assert.equal(worker.messages.at(-1).params.denoise,false);
+  assert.equal(worker.messages.at(-1).params.shimmer,0.8);
+  assert.equal(h.el('shimmerFocus').disabled,true,
+    'audition cannot be clicked again during processing');
+  h.cleanDone();
+  assert.equal(h.el('dlClean').disabled,false,
+    'shimmer-only processing remains exportable');
+  assert(h.el('autoStatus').textContent.includes('Shimmer Focus'),
+    'audition warns its purpose and comparison method');
+}
+
 async function testAutoResetCancelsQueuedDiagnosis() {
   const h = harness(); await h.open();
   h.el('denoiseStrength').value = '1.7';
@@ -592,6 +614,7 @@ async function testOverlappingSourceReadsAndWorkers() {
   await testAutoReplacementAndManualCancel();
   await testAutoAnalysisErrorRecovery();
   await testAutoResetCancelsQueuedDiagnosis();
+  await testShimmerFocusAudition();
   await testOverlappingSourceReadsAndWorkers();
   await testDynamicsPresetAndExport();
   await testExperimentalTransientPreviewAndExport();
