@@ -46,13 +46,35 @@
     var tailStart = Math.max(0, file.size - 65557);
     var tail = new Uint8Array(await file.slice(tailStart).arrayBuffer());
     var dv = new DataView(tail.buffer, tail.byteOffset, tail.byteLength), pos = -1;
+    var sawMultiVolume = false, candidates = 0;
+    // An archive comment may itself contain the EOCD signature (including a
+    // complete decoy record ending at EOF). Test the disk fields and directory
+    // bounds before accepting a candidate, rather than misreporting a valid
+    // single-volume ZIP as a split archive.
     for (var p = tail.length - 22; p >= 0; p--) {
-      if (dv.getUint32(p, true) === 0x06054b50 &&
-          p + 22 + dv.getUint16(p + 20, true) === tail.length) { pos = p; break; }
+      if (dv.getUint32(p, true) !== 0x06054b50 ||
+          p + 22 + dv.getUint16(p + 20, true) !== tail.length) continue;
+      candidates++;
+      var disk = dv.getUint16(p + 4, true), dirDisk = dv.getUint16(p + 6, true);
+      var localCount = dv.getUint16(p + 8, true), allCount = dv.getUint16(p + 10, true);
+      var dirSize = dv.getUint32(p + 12, true), dirStart = dv.getUint32(p + 16, true);
+      if (disk !== 0 || dirDisk !== 0 || localCount !== allCount) {
+        sawMultiVolume = true;
+        continue;
+      }
+      if (!allCount || allCount === 0xffff || dirStart === 0xffffffff ||
+          dirSize === 0xffffffff || dirStart + dirSize > tailStart + p ||
+          dirSize < allCount * 46 || dirSize > MAX_DIRECTORY) continue;
+      pos = p;
+      break;
     }
-    ensure(pos >= 0, 'no end-of-directory record');
-    ensure(dv.getUint16(pos + 4, true) === 0 && dv.getUint16(pos + 6, true) === 0,
-      'multi-volume archives are unsupported');
+    if (pos < 0 && sawMultiVolume) {
+      throw new Error('ZIP: end-of-directory suggests a split archive (multiple disks). ' +
+        'Please provide one complete .zip file; the original exporter may need to combine its volumes.');
+    }
+    ensure(pos >= 0,
+      candidates ? 'end-of-directory metadata is inconsistent or unsupported' :
+        'no valid end-of-directory record');
     var count = dv.getUint16(pos + 10, true), onDisk = dv.getUint16(pos + 8, true);
     var size = dv.getUint32(pos + 12, true), start = dv.getUint32(pos + 16, true);
     ensure(count === onDisk && count <= MAX_ENTRIES && count !== 0xffff,
