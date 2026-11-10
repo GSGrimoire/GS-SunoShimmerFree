@@ -46,7 +46,7 @@
     var tailStart = Math.max(0, file.size - 65557);
     var tail = new Uint8Array(await file.slice(tailStart).arrayBuffer());
     var dv = new DataView(tail.buffer, tail.byteOffset, tail.byteLength), pos = -1;
-    var sawMultiVolume = false, candidates = 0;
+    var sawMultiVolume = false, sawZip64 = false, candidates = 0;
     // An archive comment may itself contain the EOCD signature (including a
     // complete decoy record ending at EOF). Test the disk fields and directory
     // bounds before accepting a candidate, rather than misreporting a valid
@@ -62,12 +62,16 @@
         sawMultiVolume = true;
         continue;
       }
-      if (!allCount || allCount === 0xffff || dirStart === 0xffffffff ||
-          dirSize === 0xffffffff || dirStart + dirSize > tailStart + p ||
+      if (allCount === 0xffff || dirStart === 0xffffffff ||
+          dirSize === 0xffffffff) {
+        sawZip64 = true; continue;
+      }
+      if (!allCount || dirStart + dirSize > tailStart + p ||
           dirSize < allCount * 46 || dirSize > MAX_DIRECTORY) continue;
       pos = p;
       break;
     }
+    if (pos < 0 && sawZip64) throw new Error('ZIP: ZIP64 archive is unsupported.');
     if (pos < 0 && sawMultiVolume) {
       throw new Error('ZIP: end-of-directory suggests a split archive (multiple disks). ' +
         'Please provide one complete .zip file; the original exporter may need to combine its volumes.');
