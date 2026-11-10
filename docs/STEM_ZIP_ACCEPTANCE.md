@@ -18,6 +18,7 @@ This feature is **not released**. It is implemented on a draft branch stacked on
 - Preview one stem or reconstruct a full mix by summing enabled, unmuted stems (Solo takes precedence). This reconstruction keeps channel index zero aligned and does **not** guess temporal offsets.
 - Each chosen stem is unpacked, decoded, optionally cleaned/polished in a worker, and mixed **sequentially**, with decoded data discarded afterward. The app does not retain all 11 or 12 stems simultaneously in decoded memory. The compiled stereo mix is capped at 96 MiB of sample arrays.
 - If decoded lengths differ by more than 25 milliseconds or native sample rates differ, the application blocks the mix unless the user explicitly enables zero-padding/trimming and rate conversion. Smaller length differences are reported. No automatic time shifting is performed.
+- When explicitly enabling a sample-rate mismatch, the conversion uses a **64-tap band-limited, windowed-sinc** filter with precalculated phases. High-frequency energy beyond the lower sample rate's Nyquist limit is attenuated instead of aliasing into the audible band. The highest valid frequencies are rolled off slightly as the price of this protection. This operation may be computationally expensive on long stems and has not yet been listened to in a browser.
 - The compiled mix and individual previews are downloadable as 16/24/32-bit WAV or 192/256/320 kilobit-per-second MP3. The default is **32-bit float WAV** to preserve peaks above full scale. Integer WAV and MP3 exports warn before clipping if the mix exceeds full scale. The MP3 encoder runs in a separate worker.
 
 ## Acceptance matrix, required before merge
@@ -31,6 +32,7 @@ This feature is **not released**. It is implemented on a draft branch stacked on
 7. Simulate malformed and malicious archives: traversal, symlinks, encrypted entries, corrupt checksums, duplicate names, high compression ratio, many files, ZIP64 and false-size headers. The application must display a controlled error and not upload content.
 8. Use a full-sized ~380-megabyte reference archive to inspect peak memory. Verify that closing the workspace, cancelling processing and replacing the ZIP stop worker activity and release decoded resources. The memory budget is a safety estimate, not proof of mobile reliability.
 9. Test browsers without raw-DEFLATE streaming and with workers blocked: show an actionable error rather than silently losing data.
+10. Opt into a 48,000-to-44,100 sample-rate mismatch. Confirm 23-kilohertz input energy is not folded into 21.1 kilohertz in the resulting mix. Listen to high-frequency cymbals/strings and inspect performance on long stems. The synthetic regression is `node tests/stem_resample_test.js`.
 
 ## Known limitations to assess
 
