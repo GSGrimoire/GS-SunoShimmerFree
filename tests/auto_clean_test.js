@@ -85,7 +85,7 @@ const body=Array.from({length:8},()=>({
   channels:[sine(1200,0.32),sine(1200,0.32)]
 }));
 const tail=Array.from({length:8},(_,i)=>{
-  const base=sine(1200,0.32), grain=noise(24000,0.11,170+i);
+  const base=sine(1200,0.32), grain=noise(24000,0.17,170+i);
   for(let j=0;j<base.length;j++)base[j]+=grain[j];
   return {region:'tail',startSeconds:150+i,channels:[base,base.slice()]};
 });
