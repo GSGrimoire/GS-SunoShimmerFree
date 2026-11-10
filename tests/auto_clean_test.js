@@ -77,6 +77,49 @@ assert.equal(muddy.polish.dynamics, 0);
 assert.equal(muddy.polish.transients, 0);
 assert.equal(muddy.polish.targetLufs, null);
 
+// A change confined to the ending must be surfaced despite music being
+// loud throughout. The recommendation uses only shimmer, with static OFF.
+// A high-frequency rise may be musical cymbals, not actual recording damage.
+const body=Array.from({length:8},()=>({
+  region:'body', startSeconds:20,
+  channels:[sine(1200,0.32),sine(1200,0.32)]
+}));
+const tail=Array.from({length:8},(_,i)=>{
+  const base=sine(1200,0.32), grain=noise(24000,0.17,170+i);
+  for(let j=0;j<base.length;j++)base[j]+=grain[j];
+  return {region:'tail',startSeconds:150+i,channels:[base,base.slice()]};
+});
+const latePlan=Auto.inspect(body.concat(tail),sr);
+assert.equal(latePlan.findings.tailShimmerCandidate,true,
+  'sustained relative high-band increase localized in the tail must be reported');
+assert(latePlan.metrics.tailHighBandLiftDb>=4);
+assert.equal(latePlan.clean.denoise,false,
+  'a tail-only high-band change must not activate broad static subtraction');
+assert.equal(latePlan.clean.shimmer,0.75);
+assert.equal(latePlan.clean.shimmerMaxDb,6);
+assert.equal(latePlan.polish.presence,0);
+assert.equal(latePlan.polish.transients,0);
+assert.match(latePlan.explanation,/cymbals or intentional music/i);
+// An uniformly bright track must not be treated as a newly damaged ending.
+const allBright=tail.map(w=>({...w,region:'body'})).concat(tail);
+const brightPlan=Auto.inspect(allBright,sr);
+assert.equal(brightPlan.findings.tailShimmerCandidate,false,
+  'bright music without relative ending change is not automatically shimmer');
+assert.equal(brightPlan.shouldProcess,false);
+// The browser-side sampler reserves half its fixed budget for the end.
+const fixture={
+ numberOfChannels:1,length:sr*180,
+ getChannelData(){return {
+   slice(from,to){return new Float32Array(to-from);}
+ }}
+};
+const localizedSamples=Auto.sampleWindows(fixture,sr);
+assert.equal(localizedSamples.length,16);
+assert.equal(localizedSamples.filter(w=>w.region==='tail').length,8);
+assert(localizedSamples.filter(w=>w.region==='tail')
+  .every(w=>w.startSeconds>=153), 'ending should be sampled explicitly');
+assert(localizedSamples.every(w=>w.channels[0].length<=24000));
+
 // Sampling cannot allocate a complete copy of a long recording.
 let copied = 0;
 const fakeLong = {
@@ -99,4 +142,4 @@ assert.throws(() => Auto.analyze([{ channels: [Float32Array.of(NaN, 0, 0, 0)] }]
 assert.throws(() => Auto.analyze([{ channels: [new Float32Array(8), new Float32Array(6)] }], sr),
   /lengths differ/);
 assert.throws(() => Auto.sampleWindows(null, sr), /requires a loaded/);
-console.log('Auto Clean tests passed: clean bypass, quiet treble noise, flat clipping, click warning, low-mid, bounded sampling.');
+console.log('Auto Clean tests passed: clean bypass, quiet treble noise, flat clipping, click warning, low-mid, bounded sampling, localized tail comparison and shimmer-only recommendation.');
