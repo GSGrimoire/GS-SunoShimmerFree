@@ -40,7 +40,10 @@ function zip(entries, options = {}) {
   writeUInt(end,0,0x06054b50,4);writeUInt(end,8,entries.length,2);
   writeUInt(end,10,entries.length,2);writeUInt(end,12,tail.length,4);
   writeUInt(end,16,offset,4);
-  const blob=new Blob([...chunks,tail,end]);blob.name=options.name||'stems.zip';return blob;
+  const comment=Buffer.from(options.comment||Buffer.alloc(0));
+  if(comment.length>65535)throw Error('Too long ZIP comment in fixture');
+  end.writeUInt16LE(comment.length,20);
+  const blob=new Blob([...chunks,tail,end,comment]);blob.name=options.name||'stems.zip';return blob;
 }
 async function throwsZip(f,regex) {
   await assert.rejects(async()=>Zip.open(f),regex);
@@ -83,7 +86,22 @@ async function throwsZip(f,regex) {
   const short=Buffer.from(await zip([{name:'a.mp3',data:'a'}]).arrayBuffer());
   short.writeUInt32LE(0xffffffff,short.length-22+16);
   await throwsZip(new Blob([short]),/ZIP64|directory bounds/);
+  // A valid ZIP comment may contain a complete, misleading EOCD-shaped
+  // record. The old parser selected it and incorrectly reported a split ZIP.
+  const decoy=Buffer.alloc(22);
+  decoy.writeUInt32LE(0x06054b50,0);
+  decoy.writeUInt16LE(1,4);
+  decoy.writeUInt16LE(1,6);
+  const commented=zip([{name:'Drums.mp3',data:'local beat'}],{comment:decoy});
+  const commentedZip=await Zip.open(commented);
+  assert.equal(commentedZip.stems.length,1,'must ignore decoy EOCD in legitimate comment');
+  assert.equal(Buffer.from(await commentedZip.extract(commentedZip.stems[0].entry)).toString(),
+    'local beat','archive with misleading EOCD comment still extracts');
+  const genuinelySplit=Buffer.from(await zip([{name:'Split.mp3',data:'test'}]).arrayBuffer());
+  genuinelySplit.writeUInt16LE(1,genuinelySplit.length-22+4);
+  genuinelySplit.writeUInt16LE(1,genuinelySplit.length-22+6);
+  await throwsZip(new Blob([genuinelySplit]),/split archive|multiple disks/i);
   const tooMany=Array.from({length:257},(_,i)=>({name:i+'.mp3',data:'a'}));
   await throwsZip(zip(tooMany),/too many entries/);
-  console.log('Stem ZIP tests passed: stored/deflated, UTF-8, local extraction, MP3-only, format pairs, CRC, ZIP64, traversal, symlinks, encryption, duplicates, bounds.');
+  console.log('Stem ZIP tests passed: stored/deflated, UTF-8, local extraction, MP3-only, format pairs, CRC, ZIP64, comment-decoy EOCD, genuine split disks, traversal, symlinks, encryption, duplicates, bounds.');
 })().catch(err=>{console.error(err);process.exitCode=1;});
