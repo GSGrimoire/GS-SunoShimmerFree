@@ -1,0 +1,374 @@
+<!doctype html>
+<!--
+  GS SunoShimmerFree page v5
+  Version history
+    v1  First release, GS Grimoire styling: spectrogram wipe, A/B/Removed
+        switch, settings below the track.
+    v2  Restyled after Suno's own interface so it feels familiar: settings
+        panel on the left with a Clean button in place of Create, the track
+        and its versions as a song list, and a fixed player bar. Engine
+        unchanged. Files can be dropped anywhere on the page, with a
+        full-screen drop overlay.
+    v3  Editor: waveform with sections, select, split, cut, keep only,
+        section volume and fades, undo and redo, zoom. Playback and
+        downloads follow the edits.
+    v4  Local MP3 downloads alongside WAV, with progress and cancellation.
+    v5b Optional linked dynamic control as an additional Sound Polish setting.
+    v5a Optional Sound Polish tone finishing with presets and a separate audio version.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101012">
+<title>SSF Experimental Stem ZIP Preview | SunoShimmerFree</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Clear the static and glassy shimmer from AI-rendered music. Runs in your browser; your file is never uploaded.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?build=stems-39d5829">
+<link rel="stylesheet" href="stem.css?build=stems-39d5829">
+<style>
+.preview-stems-pill { display:inline-block; margin-left:7px; padding:3px 6px; color:#16100a; background:#f2b75a; border-radius:4px; font-size:10px; letter-spacing:.05em; }
+.preview-stems-notice { padding:9px 20px; text-align:center; background:#3d2d15; border-bottom:1px solid #bf8543; color:#fff3de; font-size:13px; }
+.preview-stems-notice a { color:#fff; margin-left:9px; text-decoration:underline; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="./" aria-label="SunoShimmerFree home">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2" /></svg>
+    <span>SunoShimmerFree <strong class="preview-stems-pill">STEMS TEST</strong></span>
+  </a>
+  <div class="stem-nav"><button class="pill pill-outline" type="button" data-pick>Import stems ZIP</button><a class="pill pill-outline" href="https://github.com/GSGrimoire/GS-SunoShimmerFree">Source on GitHub</a></div>
+</header>
+<div class="preview-stems-notice" role="note"><strong>Experimental stem ZIP test build.</strong> Stem mixing and resampling are not released yet. Process private songs locally, never upload them. <a href="../preview/">Test Auto Clean</a> <a href="../">Live version</a></div>
+
+<div class="app">
+
+  <!-- ============ settings panel ============ -->
+  <aside class="panel" aria-labelledby="panelHead">
+    <h2 id="panelHead" class="visually-hidden">Settings</h2>
+
+    <section class="group" aria-labelledby="gStatic">
+      <div class="group-head">
+        <h3 id="gStatic">Static</h3>
+        <label class="switch">
+          <input type="checkbox" id="denoise" role="switch" checked>
+          <span class="visually-hidden">Remove static</span>
+        </label>
+      </div>
+      <p class="group-note">Radio-between-stations hiss. The quietest moments are used as a sample of it, then it is subtracted everywhere.</p>
+      <div class="field">
+        <label for="denoiseStrength">Strength</label><output for="denoiseStrength"></output>
+        <input type="range" id="denoiseStrength" min="0" max="2" step="0.05" aria-describedby="h-strength">
+        <p class="help" id="h-strength">How hard the sampled hiss is subtracted.</p>
+      </div>
+      <div class="field">
+        <label for="maxAttenDb">Deepest cut</label><output for="maxAttenDb"></output>
+        <input type="range" id="maxAttenDb" min="0" max="18" step="0.5" aria-describedby="h-maxcut">
+        <p class="help" id="h-maxcut">The most any single frequency is turned down.</p>
+      </div>
+      <div class="field">
+        <label for="bassHz">Leave bass alone below</label><output for="bassHz"></output>
+        <input type="range" id="bassHz" min="50" max="1000" step="10" aria-describedby="h-bass">
+        <p class="help" id="h-bass">Kick and bass under this are barely touched.</p>
+      </div>
+      <div class="field">
+        <label for="quietPct">Noise sample</label><output for="quietPct"></output>
+        <input type="range" id="quietPct" min="2" max="40" step="1" aria-describedby="h-quiet">
+        <p class="help" id="h-quiet">Raise it if hiss remains; lower it if soft instruments go thin.</p>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="gShimmer">
+      <div class="group-head"><h3 id="gShimmer">Shimmer</h3></div>
+      <p class="group-note">The glassy grain on cymbals and in the air above the mix. Brief, narrow flecks are pulled down; held notes and drum hits are kept.</p>
+      <div class="field">
+        <label for="shimmer">Amount</label><output for="shimmer"></output>
+        <input type="range" id="shimmer" min="0" max="1" step="0.05" aria-describedby="h-amount">
+        <p class="help" id="h-amount">Zero turns this stage off.</p>
+      </div>
+      <div class="field">
+        <label for="shimmerMaxDb">Deepest cut</label><output for="shimmerMaxDb"></output>
+        <input type="range" id="shimmerMaxDb" min="0" max="18" step="0.5" aria-describedby="h-shcut">
+        <p class="help" id="h-shcut">The most a single fleck is turned down.</p>
+      </div>
+      <div class="field">
+        <label for="shimmerFromHz">Starts at</label><output for="shimmerFromHz"></output>
+        <input type="range" id="shimmerFromHz" min="1500" max="12000" step="100" aria-describedby="h-from">
+        <p class="help" id="h-from">Lower it if the grain reaches into vocals and guitars.</p>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="gPolish">
+      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5c</span></div>
+      <p class="group-note">Optional sound finishing after cleaning. Tone controls reduce muddiness and improve presence; gentle dynamics can tame level variations. This is not reverb removal. Loudness adjustment is optional and peak constrained.</p>
+      <div class="field">
+        <label for="polishPreset">Preset</label>
+        <select id="polishPreset" class="polish-select">
+          <option value="natural" selected>Natural</option>
+          <option value="clear">Clear</option>
+          <option value="warm">Warm</option>
+          <option value="forward">Forward</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="polishClarity">Clarity</label><output for="polishClarity">20%</output>
+        <input type="range" id="polishClarity" min="0" max="100" step="5" value="20">
+        <p class="help">Reduce muddy low-mid energy without boosting hiss.</p>
+      </div>
+      <div class="field">
+        <label for="polishPresence">Presence</label><output for="polishPresence">20%</output>
+        <input type="range" id="polishPresence" min="0" max="100" step="5" value="20">
+        <p class="help">Make vocals and instruments feel more forward. Excessive settings can sound harsh.</p>
+      </div>
+      <div class="field">
+        <label for="polishDynamics">Dynamics</label><output for="polishDynamics">0%</output>
+        <input type="range" id="polishDynamics" min="0" max="100" step="5" value="0">
+        <p class="help">Gently smooth loud passages with stereo-linked compression. Off preserves the existing tone-only sound; no automatic loudness boost.</p>
+      </div>
+      <div class="field">
+        <label for="polishTarget">Loudness target</label>
+        <select id="polishTarget" class="polish-select">
+          <option value="off" selected>Off: measure only</option>
+          <option value="-18">-18 LUFS (quieter)</option>
+          <option value="-16">-16 LUFS (balanced)</option>
+          <option value="-14">-14 LUFS (louder)</option>
+        </select>
+        <p class="help">Loudness units relative to full scale (LUFS). Boost is limited by peak headroom, so the target may not be reached.</p>
+      </div>
+      <button class="chip polish-button" type="button" id="polishApply" disabled>Polish cleaned track</button>
+      <p class="group-note" id="polishStatus" role="status" aria-live="polite">Clean a track first.</p>
+    </section>
+
+    <div class="panel-foot">
+      <p class="apply-note" id="applyNote" aria-live="polite"></p>
+      <div class="panel-actions">
+        <button class="chip" id="reset" type="button">Reset</button>
+        <button class="pill pill-create" id="apply" type="button" disabled>Clean track</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ workspace ============ -->
+  <main class="work" id="work">
+    <p class="error" id="error" role="alert" hidden></p>
+
+    <div class="upload" id="drop">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+      <h1>Clean up a track</h1>
+      <p>Drop in a song or Suno stem ZIP. WAV works best; MP3 and most other audio formats work too. ZIP archives open a local multistem workspace. Your audio stays on this device.</p>
+      <button class="pill pill-cream" type="button" data-pick>Upload audio</button>
+      <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg,.zip" class="visually-hidden" tabindex="-1" aria-hidden="true">
+    </div>
+
+    <div class="loaded" id="loaded" hidden>
+      <div class="work-head">
+        <div class="title-block">
+          <h1 id="songTitle">Track</h1>
+          <p class="meta" id="fileLine"></p>
+        </div>
+        <button class="chip" type="button" data-pick>Replace file</button>
+      </div>
+
+      <div class="spectro" id="spectro">
+        <canvas id="canvasAfter" aria-hidden="true"></canvas>
+        <canvas id="canvasBefore" aria-hidden="true"></canvas>
+        <div class="cut-shades" id="cutShades" aria-hidden="true"></div>
+        <div class="playhead" id="playhead" aria-hidden="true"></div>
+        <span class="tag tag-left">Original</span>
+        <span class="tag tag-right" id="tagRight">Cleaned</span>
+        <div class="split" id="split" role="slider" tabindex="0" aria-label="Before and after divider"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="50% original"><span></span></div>
+        <div class="busy" id="busy" hidden>
+          <div class="busy-bar"><div id="busyFill"></div></div>
+          <p id="busyText" role="status" aria-live="polite">Reading the track</p>
+        </div>
+      </div>
+
+      <div class="list-head">
+        <h2>Versions</h2>
+        <label class="format">Download as
+          <select id="bits">
+            <option value="24" selected>24-bit WAV</option>
+            <option value="16">16-bit WAV</option>
+            <option value="32">32-bit float WAV</option>
+            <option value="mp3-320">MP3, 320 kilobits/second</option>
+            <option value="mp3-256">MP3, 256 kilobits/second</option>
+            <option value="mp3-192">MP3, 192 kilobits/second</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint">WAV keeps the full quality. MP3 makes a smaller, lossy copy. Both include your edits.</p>
+      <p class="hint" id="exportStatus" role="status" aria-live="polite" hidden></p>
+      <button class="chip" id="cancelExport" type="button" hidden>Cancel MP3 export</button>
+      <fieldset class="tracks" id="listen">
+        <legend class="visually-hidden">Listen to</legend>
+        <div class="track" data-mode="original">
+          <label>
+            <input type="radio" name="mode" value="original" checked>
+            <span class="tile tile-original" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2"/></svg></span>
+            <span class="track-text"><span class="track-title">Original</span><span class="track-meta" id="metaOriginal">As uploaded</span></span>
+          </label>
+          <span class="track-key" aria-hidden="true">1</span>
+        </div>
+        <div class="track" data-mode="clean">
+          <label>
+            <input type="radio" name="mode" value="clean" disabled>
+            <span class="tile tile-clean" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg></span>
+            <span class="track-text"><span class="track-title">Cleaned</span><span class="track-meta" id="metaClean">Not cleaned yet</span></span>
+          </label>
+          <span class="track-key" aria-hidden="true">2</span>
+          <button class="icon-btn" id="dlClean" type="button" aria-label="Download cleaned WAV" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+          </button>
+        </div>
+        <div class="track" data-mode="polish">
+          <label>
+            <input type="radio" name="mode" value="polish" disabled>
+            <span class="tile tile-polish" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.1 7.9L22 12l-7.9 2.1L12 22l-2.1-7.9L2 12l7.9-2.1z"/></svg></span>
+            <span class="track-text"><span class="track-title">Polished</span><span class="track-meta" id="metaPolish">Apply Sound Polish after cleaning.</span></span>
+          </label>
+          <span class="track-key" aria-hidden="true">3</span>
+          <button class="icon-btn" id="dlPolish" type="button" aria-label="Download polished WAV" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+          </button>
+        </div>
+        <div class="track" data-mode="removed">
+          <label>
+            <input type="radio" name="mode" value="removed" disabled>
+            <span class="tile tile-removed" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></span>
+            <span class="track-text"><span class="track-title">Removed</span><span class="track-meta">What was taken out. It should sound like hiss and grit, not melody.</span></span>
+          </label>
+          <span class="track-key" aria-hidden="true">4</span>
+          <button class="icon-btn" id="dlRemoved" type="button" aria-label="Download removed WAV" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+          </button>
+        </div>
+      </fieldset>
+      <p class="edits-note" id="editsNote" hidden>Playback and downloads include your edits.</p>
+      <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1 = Original, 2 = Cleaned, 3 = Polished, 4 = Removed. The Cleaned version is unmastered; Polished adds optional tone, dynamic and peak-constrained loudness controls. The spectrogram still shows Cleaned when listening to Polished.</p>
+
+      <section class="editor" aria-labelledby="editHead">
+        <div class="list-head">
+          <h2 id="editHead">Edit</h2>
+          <div class="zoom" role="group" aria-label="Zoom">
+            <button class="icon-btn" id="edZoomOut" type="button" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+            <span class="zoom-level" id="zoomLevel" aria-live="polite">1x</span>
+            <button class="icon-btn" id="edZoomIn" type="button" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          </div>
+        </div>
+
+        <div class="toolbar" role="toolbar" aria-label="Edit tools">
+          <button class="tool" id="edSplit" type="button" aria-keyshortcuts="S" title="Split at the playhead (S)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 7l-3 5 3 5M16 7l3 5-3 5"/></svg>Split</button>
+          <button class="tool" id="edCut" type="button" aria-keyshortcuts="Delete" title="Cut the selection (Delete)" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M8.5 7.5 20 18M8.5 16.5 20 6"/></svg>Cut</button>
+          <button class="tool" id="edCrop" type="button" title="Keep only the selection" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v16h16M2 6h16v16"/></svg>Keep only</button>
+          <button class="tool" id="edSection" type="button" title="Turn the selection into its own section" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12M20 6v12M8 9h8v6H8z"/></svg>Make section</button>
+          <span class="tool-gap" aria-hidden="true"></span>
+          <button class="tool" id="edIn" type="button" aria-keyshortcuts="I" title="Mark selection start at the playhead (I)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4v16M8 4h5M8 20h5"/></svg>Mark in</button>
+          <button class="tool" id="edOut" type="button" aria-keyshortcuts="O" title="Mark selection end at the playhead (O)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 4v16M16 4h-5M16 20h-5"/></svg>Mark out</button>
+          <span class="tool-gap" aria-hidden="true"></span>
+          <button class="tool" id="edUndo" type="button" aria-keyshortcuts="Control+Z Meta+Z" title="Undo (Ctrl+Z)" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Undo</button>
+          <button class="tool" id="edRedo" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z" title="Redo (Ctrl+Shift+Z)" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>Redo</button>
+          <button class="tool" id="edReset" type="button" title="Remove all edits" disabled>Reset edits</button>
+        </div>
+
+        <div class="wave" id="wave">
+          <div class="wave-scroll" id="waveScroll">
+            <div class="wave-track" id="waveTrack"><canvas id="waveCanvas" aria-hidden="true"></canvas></div>
+          </div>
+          <div class="wave-playhead" id="wavePlayhead" aria-hidden="true"></div>
+        </div>
+        <p class="ed-note" id="edNote" aria-live="polite">Drag across the waveform to select. Click a section to adjust it, or drag the dots at its top corners to fade.</p>
+
+        <div class="inspector" id="inspector">
+          <p class="sec-label" id="secLabel">Section 1 of 1</p>
+          <div class="sec-fields">
+            <div class="field">
+              <label for="secGain">Volume</label><output for="secGain" id="secGainOut"></output>
+              <input type="range" id="secGain" min="-24" max="12" step="0.5" value="0">
+            </div>
+            <div class="field">
+              <label for="secFadeIn">Fade in</label><output for="secFadeIn" id="secFadeInOut"></output>
+              <input type="range" id="secFadeIn" min="0" max="10" step="0.05" value="0">
+            </div>
+            <div class="field">
+              <label for="secFadeOut">Fade out</label><output for="secFadeOut" id="secFadeOutOut"></output>
+              <input type="range" id="secFadeOut" min="0" max="10" step="0.05" value="0">
+            </div>
+          </div>
+        </div>
+        <p class="hint">Keys: S splits, Delete cuts, I and O mark the selection, Esc clears it, Ctrl+Z undoes. Ctrl and the scroll wheel zoom the waveform. Joins and volume changes are smoothed so edits do not click.</p>
+      </section>
+
+      <details class="more" id="export" hidden>
+        <summary>Processing report</summary>
+        <pre id="reportText"></pre>
+      </details>
+    </div>
+
+    <details class="more">
+      <summary>How it works</summary>
+      <p>The song is split into thousands of overlapping slices, about 43 milliseconds each, and each slice into a thousand frequency bands. Two passes then adjust the level of each band in each slice, and the slices are stitched back together with their original timing, so nothing about the attack or the stereo image moves.</p>
+      <p>The static pass follows the adaptive spectral denoise method shared on r/SunoAI: learn what the hiss sounds like from the quietest moments, subtract it gently in the bass and more firmly up top. The shimmer pass looks for sound that is both brief and narrow, the signature of that glassy grain, and pulls it down to the level of its surroundings. A drum hit rises across every band at once and a held note lasts, so both are left as they are.</p>
+      <p>MP3 input works, but it has already discarded detail and added its own artifacts, so start from WAV when you can. Download Cleaned or Removed as lossless WAV or a smaller MP3. MP3 supports mono and stereo; its sample rate may change to a supported rate and its encoder can add a short delay or padding. Keep WAV for further editing or exact alignment.</p>
+      <p>MP3 encoding uses <a href="https://github.com/zhuker/lamejs">lamejs</a> and <a href="https://lame.sourceforge.net/">LAME</a>, loaded locally with this page. <a href="vendor/README.md">Encoder source and licences</a>.</p>
+    </details>
+
+    <footer class="foot">
+      <p>A free tool from <a href="https://www.patreon.com/GSGrimoire">GS Grimoire</a>. Not affiliated with or endorsed by Suno. Page v<span id="pageVer"></span>, engine v<span id="ver"></span>.</p>
+    </footer>
+  </main>
+</div>
+
+<div class="drop-overlay" id="dropOverlay" hidden aria-hidden="true">
+  <div class="drop-card">
+    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+    <p class="drop-title">Drop to clean</p>
+    <p class="drop-sub" id="dropSub">WAV, MP3, FLAC or Suno stems ZIP</p>
+  </div>
+</div>
+
+<!-- ============ player bar ============ -->
+<div class="player" id="transport" hidden>
+  <div class="now">
+    <span class="tile tile-original" id="nowTile" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2"/></svg></span>
+    <span class="now-text"><span class="now-title" id="nowTitle">Track</span><span class="now-mode" id="nowMode">Original</span></span>
+  </div>
+  <div class="controls">
+    <button class="play" id="play" type="button" aria-label="Play">
+      <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+    </button>
+    <div class="timeline">
+      <span class="time" id="tNow">0:00</span>
+      <label for="seek" class="visually-hidden">Playback position</label>
+      <input type="range" id="seek" min="0" max="1000" value="0" step="1">
+      <span class="time" id="tEnd">0:00</span>
+    </div>
+  </div>
+</div>
+
+<script src="wav.js?build=stems-39d5829"></script>
+<script src="engine.js?build=stems-39d5829"></script>
+<script src="edit.js?build=stems-39d5829"></script>
+<script src="loudness.js?build=stems-39d5829"></script>
+<script src="polish.js?build=stems-39d5829"></script>
+<script src="stem-zip.js?build=stems-39d5829"></script>
+<script src="stem-resample.js?build=stems-39d5829"></script>
+<script src="stem-ui.js?build=stems-39d5829"></script>
+<script src="app.js?build=stems-39d5829"></script>
+</body>
+</html>
