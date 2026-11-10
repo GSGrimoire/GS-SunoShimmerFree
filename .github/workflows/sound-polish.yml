@@ -4,6 +4,11 @@ on:
   push:
     paths:
       - 'polish.js'
+      - 'stem-zip.js'
+      - 'stem-ui.js'
+      - 'stem-resample.js'
+      - 'stem-audio-worker.js'
+      - 'stem.css'
       - 'loudness.js'
       - 'polish-worker.js'
       - 'app.js'
@@ -22,11 +27,19 @@ on:
       - 'tests/polish_test.js'
       - 'tests/dynamics_test.js'
       - 'tests/loudness_test.js'
+      - 'tests/stem_zip_test.js'
+      - 'tests/stem_ui_test.js'
+      - 'tests/stem_resample_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
   pull_request:
     paths:
       - 'polish.js'
+      - 'stem-zip.js'
+      - 'stem-ui.js'
+      - 'stem-resample.js'
+      - 'stem-audio-worker.js'
+      - 'stem.css'
       - 'loudness.js'
       - 'polish-worker.js'
       - 'app.js'
@@ -45,6 +58,9 @@ on:
       - 'tests/polish_test.js'
       - 'tests/dynamics_test.js'
       - 'tests/loudness_test.js'
+      - 'tests/stem_zip_test.js'
+      - 'tests/stem_ui_test.js'
+      - 'tests/stem_resample_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
 
@@ -60,6 +76,12 @@ jobs:
           node-version: '22'
       - name: Test tone processing and peak safety
         run: node tests/polish_test.js
+      - name: Test safe Suno stem ZIP archive inspection and extraction
+        run: node tests/stem_zip_test.js
+      - name: Test anti-alias band-limited stem resampler
+        run: node tests/stem_resample_test.js
+      - name: Test synthetic stem browser workspace and export flows
+        run: node tests/stem_ui_test.js
       - name: Test linked dynamics, bypass and peak safety
         run: node tests/dynamics_test.js
       - name: Test browser-state integration and export races
