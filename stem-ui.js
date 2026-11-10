@@ -3,7 +3,8 @@
  */
 (function(root) {
   'use strict';
-  var Zip = root.SunoStemZip, Wav = root.WavCodec, Engine = root.ShimmerEngine;
+  var Zip = root.SunoStemZip, Wav = root.WavCodec, Engine = root.ShimmerEngine,
+    Resample = root.SunoStemResample;
   var MAX_MIX_BYTES = 96 * 1024 * 1024;
   var LENGTH_TOLERANCE_SECONDS = 0.025;
   var current = null, generation = 0, worker = null;
@@ -291,17 +292,6 @@
     }
     return 0;
   }
-  function resample(chans, oldRate, newRate) {
-    var n = Math.round(chans[0].length * newRate / oldRate);
-    return chans.map(function(src) {
-      var out = new Float32Array(n);
-      for (var i=0; i<n; i++) {
-        var x=i*oldRate/newRate, a=Math.min(Math.floor(x),src.length-1), b=Math.min(a+1,src.length-1), t=x-a;
-        out[i]=src[a]*(1-t)+src[b]*t;
-      }
-      return out;
-    });
-  }
   async function decodeStem(stem, gen, targetRate) {
     status('Unpacking and decoding: ' + stem.name + ' (' + stem.format + ')...');
     var bytes = await current.extract(stem.entry);
@@ -328,7 +318,9 @@
       if (!$('stemAllowMismatch').checked)
         throw new Error(stem.name + ' uses ' + data.sr + ' Hz, mix is ' + targetRate +
           ' Hz. Enable explicit sample-rate conversion to proceed.');
-      data.channels = resample(data.channels,data.sr,targetRate); data.sr = targetRate;
+      if (!Resample) throw new Error('Band-limited stem converter unavailable.');
+      data.channels = Resample.resample(data.channels, data.sr, targetRate);
+      data.sr = targetRate;
     }
     return data;
   }
