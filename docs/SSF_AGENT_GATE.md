@@ -1,7 +1,7 @@
 # SSF engineering agent gate: coder, independent reviewer, and release control
 
 **Date:** 20 November 2026. **Scope:** only `GSGrimoire/GS-SunoShimmerFree`.  
-**Current status:** protocol documented; **NO autonomous 20-minute runner is configured by this document**.  
+**Current status (20 November 2026): two separate **hourly ChatGPT task automations are created and enabled** for this repository, offset by 30 minutes. A 20-minute runner is not available. Successful end-to-end autonomous coding/review execution is still subject to observed first task runs.  
 **Canonical product plan:** [STUDIO_PRODUCT_PLAN.md](STUDIO_PRODUCT_PLAN.md). **Initiative:** [#18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18).  
 **Immediate review:** [PR #17](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/17), source head `4cff86b28980400664935096be643b120a48b79a` at initial handoff, and its upstream [PR #11](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/11).
 
@@ -23,7 +23,14 @@ The initial PR #17 was authored by a ChatGPT coder in an earlier conversation, s
 
 If an **external agent-capable orchestrator** is authorized and operational, use a deterministic 20-minute heartbeat dispatching alternating new sessions: coder on one tick, reviewer on the next; when a role has no eligible work, it records `no-op`. Reserve a short lease per claim, never run reviewer and author against a changing branch, and ensure jobs do not overlap. Do not add API credentials to public repository files or workflows.
 
-**Supported fallback (requires separate activation):** one hourly SSF Reviewer task and one hourly SSF Coder task, offset by 30 minutes in `Europe/Copenhagen`, operating all day and night. Each is within the once-per-hour automation limit. Staggering does not establish a guaranteed 20-minute cadence, two distinct GitHub identities, or a release by the deadline.
+**Hourly fallback ACTIVE, verified in ChatGPT Automations on 20 November 2026:**
+
+| Role | Schedule | Automation ID | First scheduled run |
+| --- | --- | --- | --- |
+| Independent reviewer | Every hour at **:45**, Europe/Copenhagen | `Automation_8d670f00137c8191898f82cf3d3e8556` | Friday, 20 November 2026, **19:45 CET** |
+| Studio coder | Every hour at **:15**, Europe/Copenhagen | `Automation_648c71194ba48191a65b9b8239c4f93a` | Friday, 20 November 2026, **20:15 CET** |
+
+Both tasks were returned as **created and enabled**, then rechecked as enabled in the automation dashboard. They repeat around the clock until explicitly paused or changed. Reviewer runs first because PR #17 awaits an independent review; coder follows 30 minutes later. The unrelated portfolio-wide GS GitHub Reviewer / Implementer automations at **:00 / :30** remain unchanged; check their claims as possible sources of collision. Staggering does **not** establish separate GitHub identities, prove first-run success, or guarantee any release by Monday. Never treat a scheduler trigger as evidence that the agent actually wrote or reviewed code.
 
 A scheduler is a trigger, not a guarantee that external credentials, GitHub permissions, network access, checks or runtime are available. Stop and report if any prerequisite is missing. Do not silently schedule activity under a different repository's existing gate or broaden a portfolio-wide agent's authority.
 
