@@ -34,6 +34,11 @@
 .stem-field { display:flex; flex-direction: column; gap: 8px; font-size: .88rem; }
 .stem-field input[type="range"] { width: 100%; accent-color: #b882f8; }
 .stem-field select, .stem-build select { border-radius: 6px; padding: 7px; color: #fff; background: #272236; border: 1px solid #76658f; }
+.stem-workspace input[type="number"] {
+  width: 7rem; max-width: 100%; box-sizing: border-box;
+  border-radius: 6px; padding: 7px; color: #fff;
+  background: #272236; border: 1px solid #76658f;
+}
 .stem-playback input[type="range"] { flex: 1; min-width: 170px; accent-color: #b882f8; }
 #stemTime { font-variant-numeric: tabular-nums; }
 body.has-stem-workspace { overflow: hidden; }
