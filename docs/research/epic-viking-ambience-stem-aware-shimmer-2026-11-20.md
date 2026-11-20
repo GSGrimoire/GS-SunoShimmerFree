@@ -3,7 +3,7 @@
 **Recorded:** 20 November 2026  
 **Status:** exploratory measurement and product hypothesis, **not** a validated repair or production-ready test  
 **Owner:** GS SunoShimmerFree project  
-**Related work:** [roadmap #2](../../issues/2), [stem import #4](../../issues/4), [stem workspace draft PR #11](../../pull/11), [localized shimmer draft PR #14](../../pull/14)
+**Related work:** [roadmap #2](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/2), [stem import #4](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/4), [stem workspace draft PR #11](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/11), [localized shimmer draft PR #14](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/14)
 
 ## Why this case matters
 
@@ -23,7 +23,7 @@ All ten report **48,000 Hz, stereo**, and each has **20,000 MP3 frames**. With 1
 
 On 20 November, the latest visible `main` commit adding `example-files/` (`6adf09a`) contained only `example-files/example.file`, **not verified audio files**. The user indicated that the stems were uploaded there; verify their actual committed paths separately before relying on GitHub for the complete audio fixture. Do not silently assume the audio is available in the public repository. Do not add private or potentially copyrighted audio files to public version control without specific authorization.
 
-The prior chat generated separate audio previews and a CSV locally, but those chat attachments are **not** a durable repository source. The numerical results and key reproduction information are recorded here and in the adjacent CSV files.
+The prior chat generated separate audio previews and a CSV locally, but those chat attachments are **not** a durable repository source. The numerical results and key reproduction information are recorded here and in the three adjacent CSV files.
 
 ## What was measured
 
@@ -76,13 +76,17 @@ Primary decision metric: **blind or level-matched human listening for less objec
 - Worker cancellation, generation guards, source replacement safety and local-only processing remain necessary; no accidental wrong-track exports or unreviewed default changes.
 - Regression fixtures: synthetic mixed stems for exact bypass and boundary clicks plus this real-world case for **manual listening acceptance**. Do not put large audio binaries into default automated tests without a deliberate fixture-storage decision.
 
+## Tracking
+
+- **Experiment issue:** [#16, time-local stem muting and selective shimmer repair](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/16). Use it for future listening outcomes, decisions and implementation acceptance.
+
 ## Status and caveats
 
 - Measurements are exploratory and tool-assisted. **No complete 8-minute browser clean, full-mix reconstruction acceptance, or blinded listening assessment was performed.**
 - The reference algorithm is not a learned defect separator. A sustained harmonic distortion may survive its temporal/spectral outlier suppression; more aggressive filtering could damage the wanted horn.
 - Per-stem muting can eliminate an artifact only if the corresponding wanted musical content is absent, redundant, or acceptably sacrificed in that interval.
-- SSF development remains stacked and draft: stem ZIP [PR #11](../../pull/11), localized shimmer [PR #14](../../pull/14). Do not merge based on this report. Keep independent review, browser acceptance and real-audio listening gates.
+- SSF development remains stacked and draft: stem ZIP [PR #11](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/11), localized shimmer [PR #14](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/14). Do not merge based on this report. Keep independent review, browser acceptance and real-audio listening gates.
 
 ## Resuming from another ChatGPT or Claude session
 
-Read this report, its two companion CSVs, roadmap #2, native ZIP issue #4, stem workspace PR #11, localized shimmer PR #14, and the linked follow-up experiment issue. Verify the actual audio fixture is committed before assuming it is retrievable. First task: listen to three strategically chosen intervals with per-stem solo and stem-bypass, then implement or prototype the **smallest reversible, time-local stem edit** that gives a meaningful perceptual improvement. Do not treat these numerical findings as a proven diagnosis or a feature acceptance.
+Read this report, its three companion CSVs, [experiment issue #16](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/16), roadmap #2, native ZIP issue #4, stem workspace PR #11, localized shimmer PR #14, . Verify the actual audio fixture is committed before assuming it is retrievable. First task: listen to three strategically chosen intervals with per-stem solo and stem-bypass, then implement or prototype the **smallest reversible, time-local stem edit** that gives a meaningful perceptual improvement. Do not treat these numerical findings as a proven diagnosis or a feature acceptance.
