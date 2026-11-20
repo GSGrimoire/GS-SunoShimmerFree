@@ -133,6 +133,46 @@ async function flush(){
   assert(h.workers.some(w=>w.url==='stem-audio-worker.js'),'stem polish worker was used');
   assert.equal(h.el('stemExport').disabled,false);
 
+  // Build only a 1-3 second passage from longer sources. Apply a time-local
+  // attenuation only to Other, without removing Percussion or altering sync.
+  const p=harness([fakeStem('Other',.2,48000,4),fakeStem('Percussion',.3,48000,4)]);
+  await p.ui.open({name:'Passage Stems.zip',size:2000});
+  p.el('stemClipStart').value='1';
+  p.el('stemClipEnd').value='3';
+  p.stems[0].passageStart=1.5;
+  p.stems[0].passageEnd=2.5;
+  p.stems[0].passageReduction=100;
+  p.el('stemBuild').fire('click');await flush();
+  assert.equal(p.el('stemExport').disabled,false,'passage preview succeeded');
+  const segment=p.audios.at(-1).getChannelData(0);
+  assert.equal(segment.length,96000,'only the requested two seconds are compiled');
+  assert(Math.abs(segment[12000]-.5)<1e-6,'both stems audible before the mute');
+  assert(Math.abs(segment[48000]-.3)<1e-6,'Other is muted only during its interval');
+  assert(Math.abs(segment[84000]-.5)<1e-6,'Other returns after the mute');
+  assert(Math.abs(segment[24480]-.4)<1e-5,'20 ms fade-in is halfway after 10 ms');
+  assert(Math.abs(segment[71520]-.4)<1e-5,'20 ms fade-out restores volume before the end');
+  assert(Math.abs(segment[24000]-.5)<1e-6,'no discontinuity at passage start');
+  assert(Math.abs(segment[72000]-.5)<1e-6,'no discontinuity at passage end');
+  assert.equal(p.audios.at(-1).duration,2,'output duration is the selected preview');
+  p.stems[0].passageReduction=0;
+  p.el('stemBuild').fire('click');await flush();
+  assert(Math.abs(p.audios.at(-1).getChannelData(0)[48000]-.5)<1e-6,
+    'bypass restores original stem without destructive changes');
+  p.stems[0].passageReduction=100;
+  p.stems[0].passageEnd=1.0;
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/passage end must be after start/);
+  assert.equal(p.el('stemExport').disabled,true,'invalid passage cannot export');
+  p.stems[0].passageEnd=2.5;
+  p.el('stemClipEnd').value='5';
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/outside the first stem duration/);
+  p.el('stemClipEnd').value='3';
+  p.el('stemClipStart').value='3';
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/Preview range must/);
+  p.ui.close();
+
   // A different WAV sample rate is rejected before silent resampling.
   const j=harness([fakeStem('First',.2,48000,1),fakeStem('Other',.3,44100,1)]);
   await j.ui.open({name:'Mismatch.zip',size:2000});
