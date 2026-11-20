@@ -21,7 +21,7 @@ Build a **complete automated local-first multitrack studio** that analyzes user 
 - No secrets, private file copies, credential material or user audio uploads to a remote service. Existing public Viking fixtures are already available; minimize duplication.
 
 ## Immediate work
-Get an independent exact-commit source review of [draft PR #17](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/17), built on [draft #11](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/11). Then proceed through the plan's bounded prioritized milestones. The 20-minute agent scheduling desired by the owner is **not operational** merely because these files exist. Verify scheduling status before claiming autonomous work is active.
+Get an independent exact-commit source review of [draft PR #17](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/17), built on [draft #11](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/11). Then proceed through the plan's bounded prioritized milestones. The owner-approved **hourly** SSF reviewer (:45) and coder (:15) automations were created and enabled on 20 November 2026, staggered by 30 minutes. See `docs/SSF_AGENT_GATE.md` for automation identifiers and operating rules. This is **not** a 20-minute schedule; the actual success of future agent runs must be verified separately.
 
 ## Handoff minimum
 Session role; exact repo/branch/base/head; task and design intent; commands and outcomes; changed files and tests; risks and unresolved gates; next eligible role/action; actual release or deployment evidence if any.
