@@ -125,7 +125,10 @@
     p.edits.forEach(function (e) {
       if (e.trackId === trackId && e.startFrame <= frame && frame < e.endFrame) {
         if (e.type === 'mute') gain = 0;
-        else if (gain !== 0) gain *= e.value;
+        // Compositional policy: overlapping gain regions multiply, but the
+        // effective linear gain is saturated to the same [0, 4] safety bound
+        // as track gain. This prevents overflow and unbounded amplification.
+        else if (gain !== 0) gain = Math.min(4, gain * e.value);
       }
     });
     return gain;
