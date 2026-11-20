@@ -35,7 +35,11 @@
       '<div id="stemList" class="stem-list" aria-label="Stems in archive"></div>',
       '<p class="stem-note">Stereo stems remain start-aligned from decoded sample zero. MP3 encoder delay cannot be inferred reliably; verify sync by listening. WAV variants are preferred when provided.</p>',
       '<label class="stem-allow"><input type="checkbox" id="stemAllowMismatch"> Allow zero-padding or trimming of mismatched stem lengths/rates (never time-shift stems)</label>',
-      '<div class="stem-build"><button type="button" id="stemBuild">Build selected mix</button>',
+      '<div class="stem-build"><label for="stemClipStart">Preview start (seconds)</label>',
+      '<input id="stemClipStart" type="number" min="0" step="0.1" value="0" class="stem-seconds">',
+      '<label for="stemClipEnd">Preview end (seconds; 0 means full length)</label>',
+      '<input id="stemClipEnd" type="number" min="0" step="0.1" value="0" class="stem-seconds">',
+      '<button type="button" id="stemBuild">Build selected mix or passage</button>',
       '<span id="stemMixInfo" class="stem-note">No mix built.</span></div>',
       '<div class="stem-playback"><button type="button" id="stemPlay">Play preview</button>',
       '<label for="stemSeek">Playback position</label><input id="stemSeek" type="range" min="0" max="1000" step="1" value="0">',
@@ -46,12 +50,13 @@
       '<option value="mp3-256">MP3 256 kilobits/s</option><option value="mp3-192">MP3 192 kilobits/s</option></select>',
       '<button type="button" id="stemExport">Export previewed mix or stem</button></div>',
       '<p class="stem-note">Individual preview and export use the selected stem controls. A compiled mix sums enabled unmuted stems; Solo overrides Enable but not Mute.',
-      ' Processing is sequential and can take time. For safety the decoded mix is limited to 96 MiB; long/high-rate tracks require a smaller selection or a desktop editor.</p>',
+      ' Processing is sequential and can take time. A compiled mix is limited to 96 MiB. For long tracks, set a short preview passage first.',
+      ' Individual MP3s are still decoded in full before extraction of that passage, so memory pressure is possible.</p>',
       '</div>'
     ].join('');
     document.body.appendChild(box);
     ['stemHeading','stemNew','stemNewFile','stemClose','stemStatus','stemArchive','stemWarnings',
-      'stemAll','stemNone','stemStop','stemList','stemAllowMismatch','stemBuild','stemMixInfo',
+      'stemAll','stemNone','stemStop','stemList','stemAllowMismatch','stemClipStart','stemClipEnd','stemBuild','stemMixInfo',
       'stemPlay','stemSeek','stemTime','stemBits','stemExport'].forEach(function(k) {
       els[k] = document.getElementById(k);
     });
@@ -80,6 +85,8 @@
       invalidate(); render();
     });
     $('stemAllowMismatch').addEventListener('change', invalidate);
+    $('stemClipStart').addEventListener('change', invalidate);
+    $('stemClipEnd').addEventListener('change', invalidate);
   }
   function status(msg, error) {
     if (!$('stemStatus')) return;
@@ -161,6 +168,7 @@
     $('stemList').replaceChildren(); $('stemArchive').hidden = true; $('stemWarnings').hidden = true;
     $('stemMixInfo').textContent = 'No mix built.';
     $('stemAllowMismatch').checked = false;
+    $('stemClipStart').value = '0'; $('stemClipEnd').value = '0';
     var gen = generation;
     current = null; status('Inspecting ' + file.name + ' locally...');
     renderActions();
@@ -209,6 +217,16 @@
     });
     l.append(span, input); return l;
   }
+  function numberField(label, value, max, handler) {
+    var l = node('label', 'stem-field'), caption = node('span', '', label);
+    var input = document.createElement('input');
+    input.type = 'number'; input.min = '0'; input.max = String(max);
+    input.step = '0.1'; input.value = String(value || 0);
+    input.addEventListener('change', function() {
+      handler(Number(input.value)); invalidate();
+    });
+    l.append(caption, input); return l;
+  }
   function render() {
     if (!current) return;
     var list = $('stemList'); list.replaceChildren();
@@ -253,7 +271,18 @@
       target.addEventListener('change', function() { s.target=target.value; invalidate(); });
       targetLabel.appendChild(target); params.append(targetLabel);
       var hint = node('p', 'stem-note', 'Enable Polish above to apply these parameters to this stem. Cleaning runs first when enabled.');
-      details.append(params, hint); card.append(details); list.append(card);
+      details.append(params, hint); card.append(details);
+      var passage = document.createElement('details');
+      passage.append(node('summary', '', 'Passage attenuation (reversible)'));
+      var passageFields = node('div', 'stem-params');
+      passageFields.append(
+        numberField('From second', s.passageStart, 99999, function(v){s.passageStart=v;}),
+        numberField('To second (0 = off)', s.passageEnd, 99999, function(v){s.passageEnd=v;}),
+        numberField('Reduction % (100 = mute)', s.passageReduction, 100, function(v){s.passageReduction=v;})
+      );
+      passage.append(passageFields,
+        node('p', 'stem-note', 'Attenuates this stem only, with 20 ms edge fades. A muted passage may also remove wanted music.'));
+      card.append(passage); list.append(card);
     });
     renderActions();
   }
@@ -356,10 +385,50 @@
     if (outcome.note) status(stem.name + ': ' + outcome.note);
     return {channels: outcome.channels, sr: data.sr};
   }
-  function sumInto(mix, data, stem) {
-    var gain = Math.pow(10, stem.volume / 20), n=Math.min(mix[0].length, data.channels[0].length);
-    var left=data.channels[0], right=data.channels[1]||left;
-    for (var i=0;i<n;i++) { mix[0][i]+=left[i]*gain; mix[1][i]+=right[i]*gain; }
+  function validatePassage(stem) {
+    var from = Number(stem.passageStart || 0), to = Number(stem.passageEnd || 0),
+      reduction = Number(stem.passageReduction || 0);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(reduction) ||
+        from < 0 || to < 0 || reduction < 0 || reduction > 100)
+      throw new Error(stem.name + ': passage values must be finite and nonnegative; reduction 0-100%.');
+    if (reduction > 0 && to <= from)
+      throw new Error(stem.name + ': passage end must be after start when reduction is enabled.');
+    return {from: from, to: to, reduction: reduction / 100};
+  }
+  function sumInto(mix, data, stem, clipStartFrame) {
+    var gain = Math.pow(10, stem.volume / 20),
+      n = Math.min(mix[0].length, data.channels[0].length),
+      left = data.channels[0], right = data.channels[1] || left,
+      edit = validatePassage(stem);
+    if (!edit.reduction) {
+      for (var i = 0; i < n; i++) {
+        mix[0][i] += left[i] * gain;
+        mix[1][i] += right[i] * gain;
+      }
+      return;
+    }
+    var from = Math.round(edit.from * data.sr) - clipStartFrame,
+      to = Math.round(edit.to * data.sr) - clipStartFrame,
+      fadeFrames = Math.max(1, Math.round(0.020 * data.sr));
+    for (var j = 0; j < n; j++) {
+      // A 20 ms fade on both boundaries, anchored in the original timeline.
+      var depth = (j > from && j < to) ?
+        Math.min(1, (j - from) / fadeFrames, (to - j) / fadeFrames) : 0;
+      var g = gain * (1 - edit.reduction * depth);
+      mix[0][j] += left[j] * g;
+      mix[1][j] += right[j] * g;
+    }
+  }
+  function clipDecoded(data, fromFrame, frames) {
+    // Copy only the requested interval before worker processing; pad only when
+    // a deliberate length-mismatch override allows a shorter source.
+    var clipped = data.channels.map(function(ch) {
+      var out = new Float32Array(frames);
+      if (fromFrame < ch.length)
+        out.set(ch.subarray(fromFrame, Math.min(ch.length, fromFrame + frames)));
+      return out;
+    });
+    return {channels:clipped, sr:data.sr};
   }
   function toBuffer(channels, sampleRate) {
     var c=audioContext(), out=c.createBuffer(channels.length,channels[0].length,sampleRate);
@@ -379,7 +448,13 @@
     }
     var mismatchMessages = [];
     try {
-      var rate=0, frames=0, allocated=0, firstNativeRate=0;
+      var rate=0, frames=0, sourceFrames=0, clipStartFrame=0,
+        allocated=0, firstNativeRate=0;
+      var clipStart=Number($('stemClipStart').value), clipEnd=Number($('stemClipEnd').value);
+      if (!Number.isFinite(clipStart) || !Number.isFinite(clipEnd) ||
+          clipStart < 0 || clipEnd < 0 || (clipEnd !== 0 && clipEnd <= clipStart))
+        throw new Error('Preview range must have nonnegative, finite seconds and an end after the start. Use end 0 for full length.');
+      selected.forEach(validatePassage);
       for (var i=0;i<selected.length;i++) {
         ensureFresh(gen);
         var s=selected[i];
@@ -394,14 +469,20 @@
             throw new Error('Source sample rates differ. Enable explicit mismatch handling or export individual stems.');
         }
         if (!rate) {
-          rate=data.sr;frames=data.channels[0].length;
+          rate=data.sr; sourceFrames=data.channels[0].length;
+          clipStartFrame=Math.round(clipStart*rate);
+          var clipEndFrame=clipEnd===0 ? sourceFrames : Math.round(clipEnd*rate);
+          if (clipStartFrame >= sourceFrames || clipEndFrame > sourceFrames)
+            throw new Error('Preview passage is outside the first stem duration (' +
+              (sourceFrames/rate).toFixed(2) + ' seconds).');
+          frames=clipEndFrame-clipStartFrame;
           allocated=frames*2*4;
           if (allocated>MAX_MIX_BYTES)
-            throw new Error('Mix would need ' + (allocated/1048576).toFixed(1) +
-              ' MiB of decoded audio. The 96 MiB safety limit was exceeded. Use a shorter source.');
+            throw new Error('Mix passage would need ' + (allocated/1048576).toFixed(1) +
+              ' MiB. The 96 MiB preview limit was exceeded. Set a shorter preview end.');
           mix=[new Float32Array(frames),new Float32Array(frames)];
         } else {
-          var delta=data.channels[0].length-frames;
+          var delta=data.channels[0].length-sourceFrames;
           if (delta) {
             var diff=delta/rate;
             mismatchMessages.push(s.name + ' differs by ' + diff.toFixed(4) + ' seconds.');
@@ -410,16 +491,19 @@
                 ' Select the mismatch checkbox to permit start-aligned trimming/padding.');
           }
         }
+        data=clipDecoded(data,clipStartFrame,frames);
         data=await processed(s,data,gen);
         ensureFresh(gen);
-        sumInto(mix,data,s);
+        sumInto(mix,data,s,clipStartFrame);
         // Do not retain decoded input/processed channels after summing them.
       }
       ensureFresh(gen);
       var peak=0;
       for (var c=0;c<2;c++) for (var j=0;j<frames;j++) peak=Math.max(peak,Math.abs(mix[c][j]));
       buffer=toBuffer(mix,rate); mix=null; position=0;
-      audioLabel=kind==='stem'?stem.name:'Selected stems';
+      audioLabel=(kind==='stem'?stem.name:'Selected stems') +
+        ' [' + clipStart.toFixed(1) + 's-' +
+        (clipEnd===0 ? (sourceFrames/rate).toFixed(1) : clipEnd.toFixed(1)) + 's]';
       $('stemMixInfo').textContent = audioLabel + ' · ' + fmtTime(buffer.duration) +
         ' · ' + rate + ' Hz · peak ' + peak.toFixed(3) +
         (peak>1?' (above full scale: integer WAV/MP3 may clip)':'') +
