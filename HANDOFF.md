@@ -18,7 +18,7 @@ See [product plan](docs/STUDIO_PRODUCT_PLAN.md) and [agent gate](docs/SSF_AGENT_
 
 ## Do not misstate status
 
-- **No active 20-minute ChatGPT agent scheduler has been established by these instructions.** ChatGPT task automations can recur only hourly; an external orchestrator is needed for a real 20-minute cycle. Separate hourly tasks offset 30 minutes are a valid *proposal*, not an activated schedule.
+- **Active SSF hourly agent tasks (20 November 2026):** Reviewer at **:45** each hour (first 19:45 CET, ID `Automation_8d670f00137c8191898f82cf3d3e8556`); coder at **:15** each hour (first 20:15 CET, ID `Automation_648c71194ba48191a65b9b8239c4f93a`), Europe/Copenhagen, around the clock. Both were verified enabled. This is a **30-minute stagger**, not a 20-minute recurrence. Actual successful GitHub review/coding work still requires verification after the first runs. Portfolio-wide gates at :00/:30 are unchanged; avoid concurrent edit collisions.
 - Drafts are not merged or deployed. No full studio is verified. Do not merge or publish solely on tests or a deadline.
 - Reviewer and coder need separate sessions; a common GitHub account is not formal distinct-account approval.
 - Actual browser and human level-matched listening must validate any claimed shimmer improvement and release.
