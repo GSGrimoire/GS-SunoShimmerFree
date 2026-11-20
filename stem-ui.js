@@ -9,7 +9,7 @@
   var LENGTH_TOLERANCE_SECONDS = 0.025;
   var current = null, generation = 0, worker = null;
   var context = null, buffer = null, source = null, startedAt = 0, position = 0, playing = false;
-  var audioLabel = '', busy = false, timer = 0, objectUrl = null;
+  var audioLabel = '', busy = false, timer = 0, objectUrl = null, pendingProcessAbort = null;
   var box, els = {};
   var defaultOptions = ['natural','clear','warm','forward'];
   function $(id) { return els[id]; }
@@ -108,6 +108,14 @@
   }
   function cancel() {
     generation++;
+    // Terminating a Worker alone does not settle the Promise awaiting it.
+    // Reject the active processing job before releasing the Worker so the
+    // suspended build can unwind and drop its decoded/mix references.
+    if (pendingProcessAbort) {
+      var abort = pendingProcessAbort;
+      pendingProcessAbort = null;
+      abort();
+    }
     if (worker) { worker.terminate(); worker = null; }
     busy = false;
     renderActions();
@@ -368,26 +376,43 @@
       try { w = new Worker('stem-audio-worker.js'); } catch (e) {
         reject(new Error('This browser cannot start the local stem-processing worker.')); return;
       }
+      var settled = false;
+      function settle(err, value) {
+        if (settled) return;
+        settled = true;
+        if (pendingProcessAbort === abort) pendingProcessAbort = null;
+        if (worker === w) worker = null;
+        try { w.terminate(); } catch (_) {}
+        if (err) reject(err); else resolve(value);
+      }
+      function abort() { settle(new Error('Cancelled.')); }
       worker = w;
+      pendingProcessAbort = abort;
       w.onmessage = function(e) {
         if (gen !== generation || worker !== w) return;
-        if (e.data.type === 'done') { worker = null; w.terminate(); resolve(e.data); }
-        else if (e.data.type === 'error') { worker = null; w.terminate(); reject(new Error(e.data.message)); }
+        if (e.data.type === 'done') settle(null, e.data);
+        else if (e.data.type === 'error')
+          settle(new Error(e.data.message || 'Stem processing failed.'));
       };
       w.onerror = function(e) {
         if (e.preventDefault) e.preventDefault();
         if (gen !== generation || worker !== w) return;
-        worker = null; w.terminate(); reject(new Error(e.message || 'Stem-processing worker failed.'));
+        settle(new Error(e.message || 'Stem-processing worker failed.'));
       };
-      w.postMessage(args, channels.map(function(ch){return ch.buffer;}));
+      try {
+        w.postMessage(args, channels.map(function(ch){return ch.buffer;}));
+      } catch (err) {
+        settle(new Error('Could not send audio to stem worker: ' + (err.message || String(err))));
+      }
     });
     ensureFresh(gen);
     if (outcome.note) status(stem.name + ': ' + outcome.note);
     return {channels: outcome.channels, sr: data.sr};
   }
   function validatePassage(stem) {
-    var from = Number(stem.passageStart || 0), to = Number(stem.passageEnd || 0),
-      reduction = Number(stem.passageReduction || 0);
+    var from = Number(stem.passageStart == null ? 0 : stem.passageStart),
+      to = Number(stem.passageEnd == null ? 0 : stem.passageEnd),
+      reduction = Number(stem.passageReduction == null ? 0 : stem.passageReduction);
     if (!Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(reduction) ||
         from < 0 || to < 0 || reduction < 0 || reduction > 100)
       throw new Error(stem.name + ': passage values must be finite and nonnegative; reduction 0-100%.');
@@ -446,7 +471,7 @@
     if (!selected.length) {
       busy=false;renderActions();status('Enable at least one unmuted stem, or select Solo.',true);return;
     }
-    var mismatchMessages = [];
+    var mismatchMessages = [], passageWarnings = [];
     try {
       var rate=0, frames=0, sourceFrames=0, clipStartFrame=0,
         allocated=0, firstNativeRate=0;
@@ -476,6 +501,8 @@
             throw new Error('Preview passage is outside the first stem duration (' +
               (sourceFrames/rate).toFixed(2) + ' seconds).');
           frames=clipEndFrame-clipStartFrame;
+          if (!Number.isSafeInteger(frames) || frames < 1)
+            throw new Error('Preview range is shorter than one audio sample at this rate. Choose a longer interval.');
           allocated=frames*2*4;
           if (allocated>MAX_MIX_BYTES)
             throw new Error('Mix passage would need ' + (allocated/1048576).toFixed(1) +
@@ -489,6 +516,18 @@
             if (Math.abs(diff)>LENGTH_TOLERANCE_SECONDS && !$('stemAllowMismatch').checked)
               throw new Error('Stem lengths differ: ' + mismatchMessages.join(' ') +
                 ' Select the mismatch checkbox to permit start-aligned trimming/padding.');
+          }
+        }
+        var edit = validatePassage(s);
+        if (edit.reduction) {
+          var duration=data.channels[0].length/data.sr,
+            previewFrom=clipStartFrame/rate, previewTo=(clipStartFrame+frames)/rate;
+          if (edit.from >= duration) {
+            passageWarnings.push(s.name + ': attenuation starts beyond the source duration and has no effect.');
+          } else if (edit.to <= previewFrom || edit.from >= previewTo) {
+            passageWarnings.push(s.name + ': attenuation does not overlap the selected preview and has no effect here.');
+          } else if (edit.to > duration) {
+            passageWarnings.push(s.name + ': attenuation extends beyond the available source and is truncated.');
           }
         }
         data=clipDecoded(data,clipStartFrame,frames);
@@ -507,9 +546,11 @@
       $('stemMixInfo').textContent = audioLabel + ' · ' + fmtTime(buffer.duration) +
         ' · ' + rate + ' Hz · peak ' + peak.toFixed(3) +
         (peak>1?' (above full scale: integer WAV/MP3 may clip)':'') +
-        (mismatchMessages.length?' · LENGTH/RATE WARNING: '+mismatchMessages.join(' '):'');
+        (mismatchMessages.length?' · LENGTH/RATE WARNING: '+mismatchMessages.join(' '):'') +
+        (passageWarnings.length?' · PASSAGE WARNING: '+passageWarnings.join(' '):'');
       status('Ready to play/export: ' + audioLabel + (mismatchMessages.length?
-        '. Check that these decoded stems stay aligned by listening.':''));
+        '. Check that these decoded stems stay aligned by listening.':'') +
+        (passageWarnings.length?' Passage warning: '+passageWarnings.join(' '):''));
       updateTime();
     } catch(err) {
       if (gen===generation) {
