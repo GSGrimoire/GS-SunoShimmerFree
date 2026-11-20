@@ -51,4 +51,31 @@ test('muted track and gain bounds', () => {
   assert.equal(P.gainAt(m,'track',510),0); assert.equal(P.gainAt(p,'track',510),0.25);
   assert.throws(()=>P.apply(p,{type:'setTrack',id:'track',field:'gain',value:-1}));
 });
+test('overlapping gains saturate at 4 and never overflow', () => {
+  const base = P.apply(P.apply(P.empty(48000), {type:'addSource',source:src}), {type:'addTrack',track});
+  const edits = Array.from({length:512}, (_, i) => ({
+    id:'g'+i, trackId:'track', type:'gain', startFrame:500, endFrame:520, value:4
+  }));
+  const many = P.validate({...base, edits});
+  assert.equal(P.gainAt(many,'track',499),1);
+  assert.equal(P.gainAt(many,'track',500),4);
+  assert(Number.isFinite(P.gainAt(many,'track',500)));
+  const muted = P.validate({...many, edits:[...edits,{id:'m',trackId:'track',type:'mute',startFrame:510,endFrame:515}]});
+  assert.equal(P.gainAt(muted,'track',510),0);
+  assert.equal(P.gainAt(muted,'track',515),4);
+  const reversed = P.validate({...many, edits:[{id:'m',trackId:'track',type:'mute',startFrame:510,endFrame:515},...edits]});
+  assert.equal(P.gainAt(reversed,'track',510),0);
+  const reduced = P.validate({...base, edits:[{id:'g1',trackId:'track',type:'gain',startFrame:500,endFrame:520,value:4},{id:'g2',trackId:'track',type:'gain',startFrame:500,endFrame:520,value:0.25}]});
+  assert.equal(P.gainAt(reduced,'track',500),1);
+});
+test('source fingerprints are optional metadata, not verified render authorization', () => {
+  const unverified = P.apply(P.empty(48000),{type:'addSource',source:src});
+  assert.equal(unverified.sources[0].digest,undefined);
+  const fingerprint = 'ab'.repeat(32);
+  const verifiedMetadata = P.apply(P.empty(48000),{type:'addSource',source:{...src,digest:fingerprint}});
+  assert.equal(verifiedMetadata.sources[0].digest,fingerprint);
+  assert.throws(()=>P.apply(P.empty(48000),{type:'addSource',source:{...src,digest:'bad'}}));
+  // Import/export must separately hash the actual media and compare digests,
+  // decoded frames and sample rates. This pure recipe module never opens media.
+});
 console.log(`${count} studio project tests passed`);
