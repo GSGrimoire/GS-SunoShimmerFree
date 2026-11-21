@@ -653,6 +653,11 @@
         (end!==0 && end<=from)) {status('Invalid export time range.',true);return;}
     var controller=new AbortController();exportSession=controller;
     var lockedCurrent=current, lockedGeneration=generation;
+    var lockedSettings=JSON.stringify(current.stems.map(function(stem){return {
+      enabled:stem.enabled,mute:stem.mute,solo:stem.solo,gain:stem.gain,
+      clean:stem.clean,polish:stem.polish,passages:stem.passages,
+      balance:stem.balance
+    };}));
     renderActions();
     var handle;
     try {
@@ -663,7 +668,13 @@
       if(exportSession===controller)exportSession=null;
       renderActions();return;
     }
-    if(controller.signal.aborted || current!==lockedCurrent || generation!==lockedGeneration) {
+    if(controller.signal.aborted || current!==lockedCurrent || generation!==lockedGeneration ||
+      JSON.stringify(current.stems.map(function(stem){return {
+        enabled:stem.enabled,mute:stem.mute,solo:stem.solo,gain:stem.gain,
+        clean:stem.clean,polish:stem.polish,passages:stem.passages,
+        balance:stem.balance
+      };}))!==lockedSettings || $('stemClipStart').value!==originalStart ||
+      $('stemClipEnd').value!==originalEnd || Number($('stemBits').value)!==bits) {
       if(exportSession===controller)exportSession=null;
       renderActions();status('Streaming WAV cancelled because the project changed.',true);return;
     }
