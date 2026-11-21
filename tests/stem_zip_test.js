@@ -101,6 +101,15 @@ async function throwsZip(f,regex) {
   genuinelySplit.writeUInt16LE(1,genuinelySplit.length-22+4);
   genuinelySplit.writeUInt16LE(1,genuinelySplit.length-22+6);
   await throwsZip(new Blob([genuinelySplit]),/split archive|multiple disks/i);
+  // Cancellation is checked before any entry bytes are read. A cancelled
+  // extraction must never produce a partial, CRC-unverified result.
+  const cancelled=await Zip.open(zip([{name:'Cancelled.mp3',data:'never read'}]));
+  const abortBefore=new AbortController();abortBefore.abort();
+  await assert.rejects(cancelled.extract(cancelled.stems[0].entry,abortBefore.signal),
+    /extraction cancelled/);
+  const afterAbort=await cancelled.extract(cancelled.stems[0].entry);
+  assert.equal(Buffer.from(afterAbort).toString(),'never read',
+    'a cancelled extraction must not corrupt a subsequent read');
   const tooMany=Array.from({length:257},(_,i)=>({name:i+'.mp3',data:'a'}));
   await throwsZip(zip(tooMany),/too many entries/);
   console.log('Stem ZIP tests passed: stored/deflated, UTF-8, local extraction, MP3-only, format pairs, CRC, ZIP64, comment-decoy EOCD, genuine split disks, traversal, symlinks, encryption, duplicates, bounds.');
