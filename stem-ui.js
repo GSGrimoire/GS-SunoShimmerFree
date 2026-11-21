@@ -367,6 +367,13 @@
       // from the MP3's native header rate. Compare native rates separately.
       var ctx = audioContext(targetRate || rate || 48000);
       var decoded = await awaitSource(ctx.decodeAudioData(bytes), gen);
+      // Avoid duplicating a full-duration decoded AudioBuffer into another
+      // equally large set of Float32Arrays. This limit is a defensive guard,
+      // not a streaming decoder or a guarantee about browser decode memory.
+      var decodedBytes = decoded.length * decoded.numberOfChannels * 4;
+      if (!Number.isSafeInteger(decodedBytes) || decodedBytes > MAX_MIX_BYTES)
+        throw new Error(stem.name + ' decoded audio exceeds the 96 MiB per-stem workspace budget. ' +
+          'Use a shorter source or a future streaming import path.');
       data = {channels: Array.from({length: decoded.numberOfChannels}, function(_, c) {
         return decoded.getChannelData(c).slice();
       }), sr: ctx.sampleRate, originalRate: rate, kind:'MP3'};
