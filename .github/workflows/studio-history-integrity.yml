@@ -1,0 +1,27 @@
+name: Studio history integrity
+
+on:
+  push:
+    paths:
+      - 'studio-operations.js'
+      - 'tests/studio_operations_test.js'
+      - '.github/workflows/studio-history-integrity.yml'
+  pull_request:
+    paths:
+      - 'studio-operations.js'
+      - 'tests/studio_operations_test.js'
+      - '.github/workflows/studio-history-integrity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  immutable-history-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate operation history against malformed frozen inputs
+        run: node --test tests/studio_operations_test.js
