@@ -24,7 +24,7 @@ test('missing and malformed expected digest fail closed', async () => {
 test('empty and over-budget inputs rejected before reading', async () => {
   await assert.rejects(verifySourceBytes(new Blob([]), shaEmpty, opts), /limit/);
   const large = {size: DEFAULT_LIMIT + 1, async arrayBuffer() { throw Error('must not read'); }};
-  await assert.rejects(verifySourceBytes(large, shaAbc, opts), /limit/);
+  await assert.rejects(verifySourceBytes(large, shaAbc, opts), /native local Blob/);
   await assert.rejects(verifySourceBytes(new Blob(['abc']), shaAbc, {...opts, maxBytes: 2}), /limit/);
 });
 test('invalid limit and unavailable digest API rejected', async () => {
@@ -38,7 +38,21 @@ test('cancellation before read and after delayed digest', async () => {
   const slow = {subtle:{async digest(_algorithm, bytes) { d.abort(); return webcrypto.subtle.digest('SHA-256', bytes); }}};
   await assert.rejects(verifySourceBytes(new Blob(['abc']), shaAbc, {cryptoProvider: slow, signal:d.signal}), /cancelled/);
 });
-test('detects a lying Blob read length', async () => {
+test('rejects spoofed Blob-like input', async () => {
   const bad = {size: 3, async arrayBuffer() { return new Uint8Array([97,98]).buffer; }};
-  await assert.rejects(verifySourceBytes(bad, shaAbc, opts), /changed/);
+  await assert.rejects(verifySourceBytes(bad, shaAbc, opts), /native local Blob/);
+});
+test('hashes native stored bytes despite overridden Blob methods and size', async () => {
+  class MisleadingBlob extends Blob {
+    get size() { return 3; }
+    async arrayBuffer() { return new TextEncoder().encode('abc').buffer; }
+  }
+  await assert.rejects(verifySourceBytes(new MisleadingBlob(['BAD']), shaAbc, opts), /mismatch/);
+  const value = await verifySourceBytes(new MisleadingBlob(['abc']), shaAbc, opts);
+  assert.equal(value.byteLength, 3);
+});
+test('rejects Blob prototype forgery without native internal slots', async () => {
+  const forged = Object.create(Blob.prototype);
+  forged.arrayBuffer = async () => new TextEncoder().encode('abc').buffer;
+  await assert.rejects(verifySourceBytes(forged, shaAbc, opts), /native local Blob/);
 });
