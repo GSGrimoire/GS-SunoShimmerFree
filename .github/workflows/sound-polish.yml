@@ -6,6 +6,8 @@ on:
       - 'polish.js'
       - 'stem-zip.js'
       - 'stem-ui.js'
+      - 'stem-mp3.js'
+      - 'stem-wav-stream.js'
       - 'stem-resample.js'
       - 'stem-audio-worker.js'
       - 'stem.css'
@@ -29,6 +31,8 @@ on:
       - 'tests/loudness_test.js'
       - 'tests/stem_zip_test.js'
       - 'tests/stem_ui_test.js'
+      - 'tests/stem_mp3_test.js'
+      - 'tests/stem_wav_stream_test.js'
       - 'tests/stem_resample_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
@@ -37,6 +41,8 @@ on:
       - 'polish.js'
       - 'stem-zip.js'
       - 'stem-ui.js'
+      - 'stem-mp3.js'
+      - 'stem-wav-stream.js'
       - 'stem-resample.js'
       - 'stem-audio-worker.js'
       - 'stem.css'
@@ -60,6 +66,8 @@ on:
       - 'tests/loudness_test.js'
       - 'tests/stem_zip_test.js'
       - 'tests/stem_ui_test.js'
+      - 'tests/stem_mp3_test.js'
+      - 'tests/stem_wav_stream_test.js'
       - 'tests/stem_resample_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
@@ -82,6 +90,10 @@ jobs:
         run: node tests/stem_resample_test.js
       - name: Test synthetic stem browser workspace and export flows
         run: node tests/stem_ui_test.js
+      - name: Test bounded MP3 parser and streaming WAV writer
+        run: |
+          node tests/stem_mp3_test.js
+          node tests/stem_wav_stream_test.js
       - name: Test linked dynamics, bypass and peak safety
         run: node tests/dynamics_test.js
       - name: Test browser-state integration and export races
