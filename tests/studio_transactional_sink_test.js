@@ -53,3 +53,49 @@ test('write failure discards and prevents publication', async () => {
   await assert.rejects(exportTransaction(a, async write => write(Uint8Array.of(1))), /disk full/);
   assert.equal(a.s.visible, null); assert.equal(a.s.discarded, true);
 });
+
+
+function deferred() { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return { promise, resolve, reject }; }
+test('unawaited write settles before discard after producer failure', async () => {
+  const a = adapter(), gate = deferred(), entered = deferred();
+  a.write = async chunk => { entered.resolve(); await gate.promise; a.s.temporary.push(chunk); };
+  const transaction = exportTransaction(a, async sink => { void sink(Uint8Array.of(1)); throw Error('producer failed'); });
+  await entered.promise;
+  assert.equal(a.s.discarded, false);
+  gate.resolve(); await assert.rejects(transaction, /producer failed/);
+  assert.equal(a.s.discarded, true); assert.deepEqual(a.s.temporary, []);
+});
+test('unawaited write is joined before commit', async () => {
+  const a = adapter(), gate = deferred(), entered = deferred();
+  a.write = async chunk => { if (chunk[0] === 2) { entered.resolve(); await gate.promise; } a.s.temporary.push(chunk); };
+  const transaction = exportTransaction(a, async sink => { await sink(Uint8Array.of(1)); void sink(Uint8Array.of(2)); });
+  await entered.promise; assert.equal(a.s.committed, false);
+  gate.resolve(); assert.deepEqual(await transaction, { result: 'saved', bytes: 2 });
+  assert.deepEqual(a.s.visible, [[1],[2]]);
+});
+test('concurrent writes serialize in call order', async () => {
+  const a = adapter(), gate = deferred(), entered = deferred(), order = [];
+  a.write = async chunk => { order.push('start'+chunk[0]); if (chunk[0] === 1) { entered.resolve(); await gate.promise; } order.push('end'+chunk[0]); a.s.temporary.push(chunk); };
+  const transaction = exportTransaction(a, async sink => { void sink(Uint8Array.of(1)); void sink(Uint8Array.of(2)); });
+  await entered.promise; assert.deepEqual(order, ['start1']); gate.resolve(); await transaction;
+  assert.deepEqual(order, ['start1','end1','start2','end2']);
+});
+test('unawaited write failure prevents commit', async () => {
+  const a = adapter(); a.write = async () => { throw Error('background write failed'); };
+  await assert.rejects(exportTransaction(a, async sink => { void sink(Uint8Array.of(1)); }), /background write failed/);
+  assert.equal(a.s.committed, false); assert.equal(a.s.discarded, true);
+});
+test('abort during commit is point of no return and reports success', async () => {
+  const a = adapter(), controller = new AbortController(), gate = deferred(), entered = deferred();
+  const commit = a.commit.bind(a);
+  a.commit = async () => { entered.resolve(); await gate.promise; return commit(); };
+  const transaction = exportTransaction(a, async sink => { await sink(Uint8Array.of(1)); }, { signal: controller.signal });
+  await entered.promise; controller.abort(); gate.resolve();
+  assert.deepEqual(await transaction, { result: 'saved', bytes: 1 }); assert.equal(a.s.committed, true);
+});
+test('abort during begin discards without writing', async () => {
+  const a = adapter(), controller = new AbortController();
+  a.begin = async () => { controller.abort(); };
+  await assert.rejects(exportTransaction(a, async () => {}, {signal:controller.signal}), /cancelled/);
+  assert.equal(a.s.discarded, true);
+});
