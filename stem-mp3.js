@@ -29,6 +29,17 @@
     var bytes=input instanceof Uint8Array?input:new Uint8Array(input);
     var offset=startOfFrames(bytes), first=header(bytes,offset);
     if (!first) throw new Error('Unsupported MP3 framing: MPEG-1 Layer III is required.');
+    // Xing/Info metadata may carry encoder delay/padding. Until gapless
+    // accounting is implemented, never advertise frame-exact alignment.
+    var sideInfo=first.channels===1?17:32;
+    var xingAt=offset+4+sideInfo+((bytes[offset+1]&1)?0:2);
+    if (xingAt+4<=offset+first.size) {
+      var marker=String.fromCharCode.apply(null,bytes.subarray(xingAt,xingAt+4));
+      if (marker==='Xing' || marker==='Info')
+        throw new Error('MP3 Xing/Info encoder timing metadata is not yet supported for aligned preview.');
+    }
+    if (!(bytes[offset+1]&1))
+      throw new Error('CRC-protected MP3 frames are not yet supported for aligned preview.');
     var start=Math.round(startSeconds*first.rate), end=Math.round(endSeconds*first.rate);
     var frames=end-start, totalBytes=frames*first.channels*4;
     if (!Number.isSafeInteger(totalBytes) || totalBytes>96*1048576)
