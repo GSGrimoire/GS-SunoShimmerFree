@@ -337,7 +337,7 @@
   // Settle the workspace's await promptly when the user cancels a pending
   // archive read or browser decode. The underlying browser operation is not
   // guaranteed abortable, so late results are ignored, never published.
-  function awaitSource(operation, gen) {
+  function awaitSource(operation, gen, controller) {
     return new Promise(function(resolve, reject) {
       var settled = false;
       function finish(err, value) {
@@ -346,7 +346,10 @@
         if (pendingSourceAbort === abort) pendingSourceAbort = null;
         if (err) reject(err); else resolve(value);
       }
-      function abort() { finish(new Error('Cancelled.')); }
+      function abort() {
+        if (controller) controller.abort();
+        finish(new Error('Cancelled.'));
+      }
       pendingSourceAbort = abort;
       Promise.resolve(operation).then(function(value) {
         if (gen !== generation) abort(); else finish(null, value);
@@ -356,7 +359,8 @@
   }
   async function decodeStem(stem, gen, targetRate) {
     status('Unpacking and decoding: ' + stem.name + ' (' + stem.format + ')...');
-    var bytes = await awaitSource(current.extract(stem.entry), gen);
+    var extractAbort = new AbortController();
+    var bytes = await awaitSource(current.extract(stem.entry, extractAbort.signal), gen, extractAbort);
     ensureFresh(gen);
     var data;
     if (stem.wav) {
