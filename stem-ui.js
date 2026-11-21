@@ -651,12 +651,22 @@
     var from=Number(originalStart), end=Number(originalEnd);
     if (!Number.isFinite(from) || !Number.isFinite(end) || from<0 || end<0 ||
         (end!==0 && end<=from)) {status('Invalid export time range.',true);return;}
+    var controller=new AbortController();exportSession=controller;
+    var lockedCurrent=current, lockedGeneration=generation;
+    renderActions();
     var handle;
     try {
       handle=await root.showSaveFilePicker({suggestedName:nameSafe(current.file.name.replace(/\\.zip$/i,'')+' - streamed mix')+'.wav',
         types:[{description:'WAV audio',accept:{'audio/wav':['.wav']}}]});
-    } catch(err) {if(err.name!=='AbortError')status('Could not choose output file: '+err.message,true);return;}
-    var controller=new AbortController();exportSession=controller;
+    } catch(err) {
+      if(err.name!=='AbortError')status('Could not choose output file: '+err.message,true);
+      if(exportSession===controller)exportSession=null;
+      renderActions();return;
+    }
+    if(controller.signal.aborted || current!==lockedCurrent || generation!==lockedGeneration) {
+      if(exportSession===controller)exportSession=null;
+      renderActions();status('Streaming WAV cancelled because the project changed.',true);return;
+    }
     var writable=null;
     try {
       $('stemClipStart').value='0';$('stemClipEnd').value='1';
