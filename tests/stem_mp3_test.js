@@ -52,6 +52,13 @@ class FakeDecoder {
     assert.equal(out.channels[1][2303],-.125);
     assert.equal(FakeDecoder.instances.at(-1).flushes,1,'MP3 reservoir must not be reset every 16 frames');
     assert(FakeDecoder.instances.at(-1).closed,'decoder must close');
+    for (const tag of ['Xing','Info']) {
+      const tagged=bytes.slice();
+      tagged.set(Buffer.from(tag),36); // MPEG-1 stereo: 4-byte header + 32-byte side information
+      await assert.rejects(root.SunoStemMp3.decodePassage(tagged,0,.1),/Xing\/Info/);
+    }
+    const protectedFrame=bytes.slice();protectedFrame[1]&=~1;
+    await assert.rejects(root.SunoStemMp3.decodePassage(protectedFrame,0,.1),/CRC-protected/);
   }
   console.log('Synthetic decoder timestamp and single-flush tests passed; real WebCodecs remains unverified.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
