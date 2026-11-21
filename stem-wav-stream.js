@@ -27,8 +27,8 @@
         to<=from || !Number.isSafeInteger(chunkFrames) || chunkFrames<1)
       throw new Error('Invalid streaming WAV frame range.');
     var total=to-from, written=0;
-    await writable.write(header(rate,total,bits));
     try {
+      await writable.write(header(rate,total,bits));
       for(var pos=from;pos<to;pos+=chunkFrames) {
         if (signal && signal.aborted) throw new Error('WAV export cancelled.');
         var count=Math.min(chunkFrames,to-pos);
