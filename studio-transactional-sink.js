@@ -12,9 +12,17 @@ export async function exportTransaction(adapter, produce, { signal } = {}) {
     started = true;
     await adapter.begin();
     if (signal?.aborted) throw new Error('Export cancelled');
+    const rejectSink = error => {
+      // A rejected write attempt invalidates the entire transaction even if
+      // the producer catches or ignores its returned rejection.
+      if (!firstWriteError) firstWriteError = error;
+      const rejected = Promise.reject(error);
+      rejected.catch(() => {}); // mark observed without hiding caller rejection
+      return rejected;
+    };
     const sink = chunk => {
-      if (closed || signal?.aborted) return Promise.reject(new Error('Export cancelled or closed'));
-      if (!(chunk instanceof Uint8Array) || !chunk.byteLength) return Promise.reject(new TypeError('Invalid export chunk'));
+      if (closed || signal?.aborted) return rejectSink(new Error('Export cancelled or closed'));
+      if (!(chunk instanceof Uint8Array) || !chunk.byteLength) return rejectSink(new TypeError('Invalid export chunk'));
       // Copy before any asynchronous boundary, and serialize accepted writes in call order.
       const copy = new Uint8Array(chunk);
       const write = tail.then(async () => {
