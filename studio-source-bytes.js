@@ -21,7 +21,7 @@
     if (!cryptoProvider?.subtle || typeof cryptoProvider.subtle.digest !== 'function') throw new Error('Local SHA-256 unavailable');
     cancelled(signal);
     // Read immutable native Blob storage, not an overridable instance method.
-    // The caller must decode this exact Blob through trusted native methods.
+    // Never return the caller's object: its methods may be overridden.
     const buffer = await Blob.prototype.arrayBuffer.call(blob);
     try {
       cancelled(signal);
@@ -30,7 +30,10 @@
       cancelled(signal);
       const digest = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('');
       if (digest !== expectedDigest.toLowerCase()) throw new Error('Source SHA-256 mismatch');
-      return Object.freeze({ blob, digest, byteLength: buffer.byteLength });
+      // Publish a fresh native Blob, never the caller's potentially overridden
+      // subclass. Future consumers must read this verified snapshot only.
+      const snapshot = new Blob([buffer], { type: '' });
+      return Object.freeze({ blob: snapshot, digest, byteLength: buffer.byteLength });
     } finally {
       // The backing buffer becomes unreachable when this function returns.
       // Browser memory collection timing is outside this module's control.
