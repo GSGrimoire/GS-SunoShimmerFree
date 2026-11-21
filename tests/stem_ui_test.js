@@ -84,12 +84,13 @@ function harness(stems, options={}) {
     }
     terminate(){this.terminated=true;}
   }
-  let releaseHeldExtract=null, heldOnce=false;
+  let releaseHeldExtract=null, heldOnce=false, heldSignal=null;
   const archive={stems,file:{name:'Synthetic Stems.zip'},compressedBytes:2000,totalBytes:stems.reduce((sum,x)=>sum+x._file.byteLength,0),
-    async extract(entry){
+    async extract(entry, signal){
       const s=stems.find(x=>x.entry===entry);if(!s)throw Error('Missing synthetic entry');
       if(options.holdFirstExtract && !heldOnce) {
         heldOnce=true;
+        heldSignal=signal;
         return new Promise(resolve=>{releaseHeldExtract=()=>resolve(s._file);});
       }
       return s._file;
@@ -103,7 +104,8 @@ function harness(stems, options={}) {
   vm.runInNewContext(source,ctx,{timeout:5000,filename:'stem-ui.js'});
   const el=id=>{const e=nodes.get(id);assert(e,'Missing '+id);return e;};
   return {ui:root.SunoStemUI,el,nodes,stems,downloaded,audios,workers,
-    releaseHeldExtract(){assert(releaseHeldExtract,'held extraction missing');releaseHeldExtract();}};
+    releaseHeldExtract(){assert(releaseHeldExtract,'held extraction missing');releaseHeldExtract();},
+    heldExtractionAborted(){return heldSignal && heldSignal.aborted;}};
 }
 async function flush(){
   for(let i=0;i<7;i++)await new Promise(resolve=>setImmediate(resolve));
@@ -237,6 +239,7 @@ async function flush(){
   slow.el('stemBuild').fire('click');await flush();
   assert.equal(slow.audios.length,0,'first extraction has not completed');
   slow.el('stemStop').fire('click');await flush();
+  assert.equal(slow.heldExtractionAborted(),true,'cancel signals underlying ZIP extraction');
   assert.equal(slow.el('stemBuild').disabled,false,'cancel releases controls during extraction');
   slow.el('stemBuild').fire('click');await flush();
   assert.equal(slow.audios.length,1,'new build succeeds without waiting for old extraction');
