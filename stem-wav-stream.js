@@ -38,7 +38,10 @@
             channels[0].length!==count || channels[1].length!==count)
           throw new Error('WAV chunk does not match the requested frame interval.');
         // Encode each bounded chunk with the same codec as preview export.
-        var bytes=root.WavCodec.encodeWav(channels,rate,bits);
+        var codec=options.codec || root.WavCodec;
+        if (!codec || typeof codec.encodeWav!=='function')
+          throw new Error('WAV codec unavailable.');
+        var bytes=codec.encodeWav(channels,rate,bits);
         await writable.write(new Uint8Array(bytes,44));
         written+=count;
         if (options.onProgress) options.onProgress(written,total);
