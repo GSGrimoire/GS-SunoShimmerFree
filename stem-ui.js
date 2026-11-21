@@ -56,7 +56,7 @@
       '</div>'
     ].join('');
     document.body.appendChild(box);
-    ['stemHeading','stemNew','stemNewFile','stemClose','stemStatus','stemArchive','stemWarnings',
+    ['stemHeading','stemNew','stemNewFile','stemClose','stemStatus','stemArchive','stemWarnings','stemMemory',
       'stemAll','stemNone','stemStop','stemList','stemAllowMismatch','stemClipStart','stemClipEnd','stemBuild','stemMixInfo',
       'stemPlay','stemSeek','stemTime','stemBits','stemExport'].forEach(function(k) {
       els[k] = document.getElementById(k);
