@@ -29,6 +29,7 @@
       '<p id="stemStatus" role="status" aria-live="polite">Choose a Suno stem ZIP.</p>',
       '<p class="stem-note" id="stemArchive" hidden></p>',
       '<p class="stem-note" id="stemWarnings" hidden></p>',
+      '<p class="stem-note" id="stemMemory" role="status">Memory: no preview measured yet.</p>',
       '<div class="stem-toolbar"><button type="button" id="stemAll">Enable all</button>',
       '<button type="button" id="stemNone">Disable all</button>',
       '<button type="button" id="stemStop">Cancel processing</button></div>',
@@ -87,6 +88,18 @@
     $('stemAllowMismatch').addEventListener('change', invalidate);
     $('stemClipStart').addEventListener('change', invalidate);
     $('stemClipEnd').addEventListener('change', invalidate);
+  }
+  function memoryReport(decodedBytes, previewBytes, label) {
+    // These are explicit buffer sizes, NOT a measurement of process memory.
+    // Chromium-only performance.memory is optional and may be approximate.
+    var heap = root.performance && root.performance.memory;
+    var heapText = heap && Number.isFinite(heap.usedJSHeapSize) ?
+      ' · reported JavaScript heap ' + (heap.usedJSHeapSize / 1048576).toFixed(1) + ' MiB' :
+      ' · browser heap unavailable';
+    if ($('stemMemory')) $('stemMemory').textContent = 'Memory (' + label + '): decoded source ' +
+      (decodedBytes / 1048576).toFixed(1) + ' MiB, preview buffers ' +
+      (previewBytes / 1048576).toFixed(1) + ' MiB' + heapText +
+      '. Audio decoder/native memory is not measured.';
   }
   function status(msg, error) {
     if (!$('stemStatus')) return;
@@ -507,6 +520,7 @@
     if (context) { context.close().catch(function(){}); context = null; }
     busy = true; renderActions();
     var gen=generation, selected=kind==='stem'?[stem]:selectedStems(), mix=null;
+    var largestDecodedBytes=0;
     if (!selected.length) {
       busy=false;renderActions();status('Enable at least one unmuted stem, or select Solo.',true);return;
     }
@@ -525,6 +539,9 @@
         status('Stem ' + (i+1) + ' of ' + selected.length + ': ' + s.name);
         var data=await decodeStem(s,gen,rate || null);
         ensureFresh(gen);
+        var decodedBytes=data.channels.reduce(function(total,ch){return total+ch.byteLength;},0);
+        largestDecodedBytes=Math.max(largestDecodedBytes,decodedBytes);
+        memoryReport(largestDecodedBytes,allocated,'building');
         if (!firstNativeRate) firstNativeRate = data.originalRate || data.sr;
         else if (data.originalRate && firstNativeRate !== data.originalRate) {
           mismatchMessages.push(s.name + ' native sample rate is ' + data.originalRate +
@@ -579,6 +596,7 @@
       var peak=0;
       for (var c=0;c<2;c++) for (var j=0;j<frames;j++) peak=Math.max(peak,Math.abs(mix[c][j]));
       buffer=toBuffer(mix,rate); mix=null; position=0;
+      memoryReport(largestDecodedBytes,allocated + buffer.length*buffer.numberOfChannels*4,'preview ready');
       audioLabel=(kind==='stem'?stem.name:'Selected stems') +
         ' [' + clipStart.toFixed(1) + 's-' +
         (clipEnd===0 ? (sourceFrames/rate).toFixed(1) : clipEnd.toFixed(1)) + 's]';
@@ -593,7 +611,9 @@
       updateTime();
     } catch(err) {
       if (gen===generation) {
-        clearPreview(); status('Could not build audio: '+(err.message||String(err)),true);
+        clearPreview();
+        memoryReport(largestDecodedBytes,allocated,'build failed');
+        status('Could not build audio: '+(err.message||String(err)),true);
       }
     } finally {
       if (gen===generation) { busy=false; renderActions(); }
