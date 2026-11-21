@@ -378,8 +378,11 @@
       if (!Number.isSafeInteger(decodedBytes) || decodedBytes > MAX_MIX_BYTES)
         throw new Error(stem.name + ' decoded audio exceeds the 96 MiB per-stem workspace budget. ' +
           'Use a shorter source or a future streaming import path.');
+      // Browser AudioBuffer channel views are read-only inputs to the mix.
+      // clipDecoded creates the short mutable passage before any worker runs.
+      // Avoid cloning the entire decoded source, which can be hundreds of MiB.
       data = {channels: Array.from({length: decoded.numberOfChannels}, function(_, c) {
-        return decoded.getChannelData(c).slice();
+        return decoded.getChannelData(c);
       }), sr: ctx.sampleRate, originalRate: rate, kind:'MP3'};
     }
     ensureFresh(gen);
