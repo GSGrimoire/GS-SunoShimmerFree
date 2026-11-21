@@ -9,7 +9,7 @@
   var LENGTH_TOLERANCE_SECONDS = 0.025;
   var current = null, generation = 0, worker = null;
   var context = null, buffer = null, source = null, startedAt = 0, position = 0, playing = false;
-  var audioLabel = '', busy = false, timer = 0, objectUrl = null, pendingProcessAbort = null;
+  var audioLabel = '', busy = false, timer = 0, objectUrl = null, pendingProcessAbort = null, pendingSourceAbort = null;
   var box, els = {};
   var defaultOptions = ['natural','clear','warm','forward'];
   function $(id) { return els[id]; }
@@ -111,6 +111,11 @@
     // Terminating a Worker alone does not settle the Promise awaiting it.
     // Reject the active processing job before releasing the Worker so the
     // suspended build can unwind and drop its decoded/mix references.
+    if (pendingSourceAbort) {
+      var abortSource = pendingSourceAbort;
+      pendingSourceAbort = null;
+      abortSource();
+    }
     if (pendingProcessAbort) {
       var abort = pendingProcessAbort;
       pendingProcessAbort = null;
@@ -329,9 +334,29 @@
     }
     return 0;
   }
+  // Settle the workspace's await promptly when the user cancels a pending
+  // archive read or browser decode. The underlying browser operation is not
+  // guaranteed abortable, so late results are ignored, never published.
+  function awaitSource(operation, gen) {
+    return new Promise(function(resolve, reject) {
+      var settled = false;
+      function finish(err, value) {
+        if (settled) return;
+        settled = true;
+        if (pendingSourceAbort === abort) pendingSourceAbort = null;
+        if (err) reject(err); else resolve(value);
+      }
+      function abort() { finish(new Error('Cancelled.')); }
+      pendingSourceAbort = abort;
+      Promise.resolve(operation).then(function(value) {
+        if (gen !== generation) abort(); else finish(null, value);
+      }, finish);
+      if (gen !== generation) abort();
+    });
+  }
   async function decodeStem(stem, gen, targetRate) {
     status('Unpacking and decoding: ' + stem.name + ' (' + stem.format + ')...');
-    var bytes = await current.extract(stem.entry);
+    var bytes = await awaitSource(current.extract(stem.entry), gen);
     ensureFresh(gen);
     var data;
     if (stem.wav) {
@@ -341,7 +366,7 @@
       // decodeAudioData resamples to the AudioContext rate, which may differ
       // from the MP3's native header rate. Compare native rates separately.
       var ctx = audioContext(targetRate || rate || 48000);
-      var decoded = await ctx.decodeAudioData(bytes);
+      var decoded = await awaitSource(ctx.decodeAudioData(bytes), gen);
       data = {channels: Array.from({length: decoded.numberOfChannels}, function(_, c) {
         return decoded.getChannelData(c).slice();
       }), sr: ctx.sampleRate, originalRate: rate, kind:'MP3'};
