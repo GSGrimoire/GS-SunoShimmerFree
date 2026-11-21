@@ -5,6 +5,7 @@
 (function(root) {
   'use strict';
   function header(bytes, i) {
+    // Accept only MPEG-1 Layer III. Reject reserved versions and other layers.
     if (i+4>bytes.length || bytes[i]!==255 || (bytes[i+1]&254)!==250) return null;
     var rateIndex=(bytes[i+2]>>2)&3, bitrateIndex=(bytes[i+2]>>4)&15;
     if (rateIndex===3 || !bitrateIndex || bitrateIndex===15) return null;
@@ -33,7 +34,8 @@
     if (!Number.isSafeInteger(totalBytes) || totalBytes>96*1048576)
       throw new Error('MP3 passage exceeds the 96 MiB decoded output budget.');
     var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
-    var decoder, failure=null, sampleOffset=0, frameNumber=0, count=0;
+    var decoder, failure=null, frameNumber=0, count=0;
+    var decodedFrames=0, observedFrames=0, lastEnd=0;
     function active() { if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.'); }
     function output(audio) {
       try {
@@ -41,6 +43,14 @@
         if (audio.sampleRate!==first.rate || audio.numberOfChannels!==first.channels)
           throw new Error('MP3 decoder changed rate or channel layout.');
         var begin=Math.round(audio.timestamp*first.rate/1000000), length=audio.numberOfFrames;
+        if (!Number.isSafeInteger(begin) || begin<0 || !Number.isSafeInteger(length) || length<1)
+          throw new Error('Invalid decoded MP3 timestamp or frame length.');
+        if (observedFrames && begin<lastEnd)
+          throw new Error('Overlapping or out-of-order MP3 decoded timestamps.');
+        if (observedFrames && begin>lastEnd)
+          throw new Error('Gap in MP3 decoded timestamps.');
+        observedFrames++;lastEnd=begin+length;
+        decodedFrames+=length;
         var from=Math.max(start,begin), to=Math.min(end,begin+length);
         if (to>from) {
           var temporary=new Float32Array(length);
@@ -74,14 +84,21 @@
           count++;
         }
         frameNumber++;offset+=h.size;
+        // Drain the decoder without flush() until the end. Repeated flushes
+        // reset MP3 bit-reservoir state and can corrupt inter-frame audio.
         if (count===16) {
-          await decoder.flush();count=0;
-          if (failure) throw failure;
+          while (decoder.decodeQueueSize>8) {
+            active();if(failure)throw failure;
+            await new Promise(function(resolve){setTimeout(resolve,0);});
+          }
+          count=0;
         }
       }
-      if (count) await decoder.flush();
+      await decoder.flush();
       active();if (failure) throw failure;
       if (frameNumber*1152<end) throw new Error('Requested MP3 passage exceeds source duration.');
+      if (!observedFrames || lastEnd<end)
+        throw new Error('MP3 decoder did not produce the complete requested passage.');
       return {channels:channels,sr:first.rate,originalRate:first.rate,kind:'MP3',
         sourceFrames:frameNumber*1152,passageStartFrame:start};
     } finally {
