@@ -1,15 +1,55 @@
 // Immutable, local-only edit history. This stores recipes, never audio.
 const CAP = 10000;
 function frame(n) { if (!Number.isSafeInteger(n) || n < 0) throw new RangeError('frame'); return n; }
+// Frozen objects are not a provenance boundary. Treat external or restored
+// histories as untrusted recipes and validate every entry before exposing it.
+function ownData(obj, key) {
+  const descriptor = Object.getOwnPropertyDescriptor(obj, key);
+  if (!descriptor || !Object.hasOwn(descriptor, 'value')) throw new TypeError('history');
+  return descriptor.value;
+}
+const OP_KEYS = Object.freeze(['type','trackId','startFrame','endFrame','gain']);
 function validate(h) {
-  if (!h || h.schemaVersion !== 1 || !Object.isFrozen(h) ||
-      !Object.isFrozen(h.operations) || !Object.isFrozen(h.trackIds) ||
-      !Array.isArray(h.operations) || h.operations.length > CAP ||
-      !Number.isSafeInteger(h.cursor) || h.cursor < 0 || h.cursor > h.operations.length ||
-      !Array.isArray(h.trackIds) || h.trackIds.length < 1 || h.trackIds.length > 10 ||
-      new Set(h.trackIds).size !== h.trackIds.length ||
-      !Number.isSafeInteger(h.durationFrames) || h.durationFrames < 1 ||
-      h.operations.some(op => !Object.isFrozen(op))) throw new TypeError('history');
+  if (!h || typeof h !== 'object' || Array.isArray(h) || !Object.isFrozen(h))
+    throw new TypeError('history');
+  const schemaVersion = ownData(h, 'schemaVersion');
+  const trackIds = ownData(h, 'trackIds');
+  const durationFrames = ownData(h, 'durationFrames');
+  const operations = ownData(h, 'operations');
+  const cursor = ownData(h, 'cursor');
+  if (schemaVersion !== 1 ||
+      !Number.isSafeInteger(durationFrames) || durationFrames < 1 ||
+      !Array.isArray(trackIds) || !Object.isFrozen(trackIds) ||
+      trackIds.length < 1 || trackIds.length > 10 ||
+      !Array.isArray(operations) || !Object.isFrozen(operations) ||
+      operations.length > CAP || !Number.isSafeInteger(cursor) ||
+      cursor < 0 || cursor > operations.length) throw new TypeError('history');
+  const allowed = new Set();
+  for (let i = 0; i < trackIds.length; i++) {
+    if (!Object.hasOwn(trackIds, i)) throw new TypeError('history');
+    const id = ownData(trackIds, String(i));
+    if (typeof id !== 'string' || !id || id.length > 128 || allowed.has(id))
+      throw new TypeError('history');
+    allowed.add(id);
+  }
+  for (let i = 0; i < operations.length; i++) {
+    if (!Object.hasOwn(operations, i)) throw new TypeError('history');
+    const op = ownData(operations, String(i));
+    if (!op || typeof op !== 'object' || Array.isArray(op) ||
+        !Object.isFrozen(op) || Reflect.ownKeys(op).length !== OP_KEYS.length)
+      throw new TypeError('history');
+    const type = ownData(op, 'type');
+    const trackId = ownData(op, 'trackId');
+    const startFrame = ownData(op, 'startFrame');
+    const endFrame = ownData(op, 'endFrame');
+    const gain = ownData(op, 'gain');
+    if ((type !== 'gain' && type !== 'mute') || !allowed.has(trackId) ||
+        !Number.isSafeInteger(startFrame) || startFrame < 0 ||
+        !Number.isSafeInteger(endFrame) || endFrame <= startFrame ||
+        endFrame > durationFrames || !Number.isFinite(gain) ||
+        gain < 0 || gain > 4 || (type === 'mute' && gain !== 0))
+      throw new TypeError('history');
+  }
 }
 export function createOperationHistory({trackIds, durationFrames}) {
   if (!Array.isArray(trackIds) || trackIds.length < 1 || trackIds.length > 10 ||
