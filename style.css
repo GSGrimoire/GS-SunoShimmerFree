@@ -1,4 +1,4 @@
-/* GS SunoShimmerFree page styles v3
+/* GS SunoShimmerFree page styles v3.1
  *
  * Colours follow Suno's published palette so the page feels familiar to
  * Suno users. Two values were adjusted for contrast: the Clean button uses
@@ -11,6 +11,7 @@
  *       left settings panel, song-list versions, fixed player bar.
  *   v3  Editor: toolbar, zoomable waveform, section inspector, removed
  *       stretches shaded on the spectrogram.
+ *   v3.1 Header logo image (Twin Orbs).
  */
 :root {
   --canvas: #101012;
@@ -66,6 +67,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 }
 .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 600; font-size: 16px; min-height: 44px; }
 .brand svg { width: 22px; height: 22px; stroke: var(--pink); }
+.brand img { display: block; width: 32px; height: 32px; flex: none; }
 
 /* ---------- pills, chips, buttons ---------- */
 .pill {
