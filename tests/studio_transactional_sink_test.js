@@ -99,3 +99,33 @@ test('abort during begin discards without writing', async () => {
   await assert.rejects(exportTransaction(a, async () => {}, {signal:controller.signal}), /cancelled/);
   assert.equal(a.s.discarded, true);
 });
+
+test('ignored rejected empty chunk after valid write discards and never commits', async () => {
+  const a = adapter();
+  await assert.rejects(exportTransaction(a, async sink => {
+    await sink(Uint8Array.of(1));
+    sink(new Uint8Array()).catch(() => {});
+  }), /Invalid export chunk/);
+  assert.equal(a.s.committed, false);
+  assert.equal(a.s.visible, null);
+  assert.equal(a.s.discarded, true);
+});
+test('ignored rejected invalid chunk after valid write discards', async () => {
+  const a = adapter();
+  await assert.rejects(exportTransaction(a, async sink => {
+    await sink(Uint8Array.of(1));
+    void sink([2]).catch(() => {});
+  }), /Invalid export chunk/);
+  assert.equal(a.s.committed, false);
+  assert.equal(a.s.discarded, true);
+});
+test('ignored rejected sink after abort discards earlier valid bytes', async () => {
+  const a = adapter(), controller = new AbortController();
+  await assert.rejects(exportTransaction(a, async sink => {
+    await sink(Uint8Array.of(1));
+    controller.abort();
+    void sink(Uint8Array.of(2)).catch(() => {});
+  }, {signal:controller.signal}), /cancelled/);
+  assert.equal(a.s.committed, false);
+  assert.equal(a.s.discarded, true);
+});
