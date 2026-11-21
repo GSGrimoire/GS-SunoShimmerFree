@@ -11,6 +11,7 @@
   var context = null, buffer = null, source = null, startedAt = 0, position = 0, playing = false;
   var audioLabel = '', busy = false, timer = 0, objectUrl = null, pendingProcessAbort = null, pendingSourceAbort = null;
   var box, els = {};
+  var exportSession = null, lastBuild = null;
   var defaultOptions = ['natural','clear','warm','forward'];
   function $(id) { return els[id]; }
   function make() {
@@ -49,7 +50,8 @@
       '<select id="stemBits"><option value="32">32-bit float WAV</option><option value="24">24-bit WAV</option>',
       '<option value="16">16-bit WAV</option><option value="mp3-320">MP3 320 kilobits/s</option>',
       '<option value="mp3-256">MP3 256 kilobits/s</option><option value="mp3-192">MP3 192 kilobits/s</option></select>',
-      '<button type="button" id="stemExport">Export previewed mix or stem</button></div>',
+      '<button type="button" id="stemExport">Export previewed mix or stem</button>',
+      '<button type="button" id="stemStreamExport">Stream selection to WAV file</button></div>',
       '<p class="stem-note">Individual preview and export use the selected stem controls. A compiled mix sums enabled unmuted stems; Solo overrides Enable but not Mute.',
       ' Processing is sequential and can take time. A compiled mix is limited to 96 MiB. For long tracks, set a short preview passage first.',
       ' Individual MP3s are still decoded in full before extraction of that passage, so memory pressure is possible.</p>',
@@ -58,7 +60,7 @@
     document.body.appendChild(box);
     ['stemHeading','stemNew','stemNewFile','stemClose','stemStatus','stemArchive','stemWarnings','stemMemory',
       'stemAll','stemNone','stemStop','stemList','stemAllowMismatch','stemClipStart','stemClipEnd','stemBuild','stemMixInfo',
-      'stemPlay','stemSeek','stemTime','stemBits','stemExport'].forEach(function(k) {
+      'stemPlay','stemSeek','stemTime','stemBits','stemExport','stemStreamExport'].forEach(function(k) {
       els[k] = document.getElementById(k);
     });
     $('stemClose').addEventListener('click', close);
@@ -69,6 +71,7 @@
     });
     $('stemStop').addEventListener('click', function() { cancel(); status('Processing cancelled.'); });
     $('stemBuild').addEventListener('click', function() { build('mix'); });
+    $('stemStreamExport').addEventListener('click', streamExport);
     $('stemPlay').addEventListener('click', function() { playing ? pause() : play(); });
     $('stemSeek').addEventListener('input', function() {
       if (!buffer) return;
@@ -119,7 +122,8 @@
   function clearPreview() {
     stopAudio(); buffer = null; audioLabel = ''; position = 0; updateTime(); renderActions();
   }
-  function cancel() {
+  function cancel(insideExport) {
+    if (!insideExport && exportSession) exportSession.abort();
     generation++;
     // Terminating a Worker alone does not settle the Promise awaiting it.
     // Reject the active processing job before releasing the Worker so the
@@ -314,10 +318,12 @@
   }
   function renderActions() {
     if (!$('stemBuild')) return;
-    $('stemBuild').disabled = !current || busy;
-    $('stemExport').disabled = !buffer || busy;
+    $('stemBuild').disabled = !current || busy || !!exportSession;
+    $('stemStreamExport').disabled = !current || busy || !!exportSession ||
+      !root.showSaveFilePicker || !root.SunoStemWavStream;
+    $('stemExport').disabled = !buffer || busy || !!exportSession;
     $('stemPlay').disabled = !buffer || busy;
-    $('stemStop').disabled = !busy;
+    $('stemStop').disabled = !busy && !exportSession;
     $('stemAll').disabled = !current || busy;
     $('stemNone').disabled = !current || busy;
   }
@@ -517,9 +523,10 @@
     channels.forEach(function(ch,index){out.copyToChannel(ch,index);});
     return out;
   }
-  async function build(kind, stem) {
-    if (busy || !current) return;
-    cancel(); clearPreview();
+  async function build(kind, stem, insideExport) {
+    if (busy || !current || (exportSession && !insideExport)) return false;
+    cancel(!!insideExport); clearPreview();
+    lastBuild=null;
     // Always choose the decode rate from the stem(s) requested for this build,
     // not a stale AudioContext used by an earlier preview.
     if (context) { context.close().catch(function(){}); context = null; }
@@ -601,6 +608,7 @@
       var peak=0;
       for (var c=0;c<2;c++) for (var j=0;j<frames;j++) peak=Math.max(peak,Math.abs(mix[c][j]));
       buffer=toBuffer(mix,rate); mix=null; position=0;
+      lastBuild={rate:rate,sourceFrames:sourceFrames,frames:frames};
       memoryReport(largestDecodedBytes,allocated + buffer.length*buffer.numberOfChannels*4,'preview ready');
       audioLabel=(kind==='stem'?stem.name:'Selected stems') +
         ' [' + clipStart.toFixed(1) + 's-' +
@@ -614,14 +622,91 @@
         '. Check that these decoded stems stay aligned by listening.':'') +
         (passageWarnings.length?' Passage warning: '+passageWarnings.join(' '):''));
       updateTime();
+      return true;
     } catch(err) {
       if (gen===generation) {
-        clearPreview();
+        clearPreview(); lastBuild=null;
         memoryReport(largestDecodedBytes,allocated,'build failed');
         status('Could not build audio: '+(err.message||String(err)),true);
       }
     } finally {
       if (gen===generation) { busy=false; renderActions(); }
+    }
+    return false;
+  }
+  async function streamExport() {
+    if (busy || exportSession || !current || !root.showSaveFilePicker || !root.SunoStemWavStream) return;
+    var bits=Number($('stemBits').value);
+    if (![16,24,32].includes(bits)) {
+      status('Streaming export supports WAV 16, 24 or 32-bit only.',true);return;
+    }
+    // Stateful cleaning and loudness normalization need cross-chunk continuity.
+    // Reject them until a stateful processor is integrated rather than silently
+    // creating different audio from the short preview.
+    var selected=selectedStems();
+    if (!selected.length || selected.some(function(s){return s.clean || s.polish;})) {
+      status('Streaming WAV currently requires at least one stem and Cleaning/Polish disabled.',true);return;
+    }
+    var originalStart=$('stemClipStart').value, originalEnd=$('stemClipEnd').value;
+    var from=Number(originalStart), end=Number(originalEnd);
+    if (!Number.isFinite(from) || !Number.isFinite(end) || from<0 || end<0 ||
+        (end!==0 && end<=from)) {status('Invalid export time range.',true);return;}
+    var controller=new AbortController();exportSession=controller;
+    var lockedCurrent=current, lockedGeneration=generation;
+    var lockedSettings=JSON.stringify(current.stems.map(function(stem){return {
+      enabled:stem.enabled,mute:stem.mute,solo:stem.solo,gain:stem.gain,
+      clean:stem.clean,polish:stem.polish,passages:stem.passages,
+      balance:stem.balance
+    };}));
+    renderActions();
+    var handle;
+    try {
+      handle=await root.showSaveFilePicker({suggestedName:nameSafe(current.file.name.replace(/\\.zip$/i,'')+' - streamed mix')+'.wav',
+        types:[{description:'WAV audio',accept:{'audio/wav':['.wav']}}]});
+    } catch(err) {
+      if(err.name!=='AbortError')status('Could not choose output file: '+err.message,true);
+      if(exportSession===controller)exportSession=null;
+      renderActions();return;
+    }
+    if(controller.signal.aborted || current!==lockedCurrent || generation!==lockedGeneration ||
+      JSON.stringify(current.stems.map(function(stem){return {
+        enabled:stem.enabled,mute:stem.mute,solo:stem.solo,gain:stem.gain,
+        clean:stem.clean,polish:stem.polish,passages:stem.passages,
+        balance:stem.balance
+      };}))!==lockedSettings || $('stemClipStart').value!==originalStart ||
+      $('stemClipEnd').value!==originalEnd || Number($('stemBits').value)!==bits) {
+      if(exportSession===controller)exportSession=null;
+      renderActions();status('Streaming WAV cancelled because the project changed.',true);return;
+    }
+    var writable=null;
+    try {
+      $('stemClipStart').value='0';$('stemClipEnd').value='1';
+      if (!await build('mix',null,true) || controller.signal.aborted) throw new Error('Could not probe source duration.');
+      var rate=lastBuild.rate, sourceFrames=lastBuild.sourceFrames;
+      var startFrame=Math.round(from*rate), endFrame=end===0?sourceFrames:Math.round(end*rate);
+      if (startFrame>=sourceFrames || endFrame>sourceFrames || endFrame<=startFrame)
+        throw new Error('Export selection is outside source duration.');
+      writable=await handle.createWritable();
+      await root.SunoStemWavStream.write({rate:rate,startFrame:startFrame,endFrame:endFrame,codec:Wav,
+        bits:bits,writable:writable,signal:controller.signal,chunkFrames:rate*10,
+        getChunk:async function(pos,count) {
+          if(controller.signal.aborted)throw new Error('Export cancelled.');
+          $('stemClipStart').value=String(pos/rate);
+          $('stemClipEnd').value=String((pos+count)/rate);
+          if(!await build('mix',null,true) || controller.signal.aborted)
+            throw new Error('Mix chunk failed or export cancelled.');
+          if(!lastBuild || lastBuild.rate!==rate || buffer.length!==count)
+            throw new Error('Mix chunk changed sample rate or length.');
+          return [buffer.getChannelData(0),buffer.getChannelData(1)];
+        },onProgress:function(done,total){status('Streaming WAV: '+Math.round(100*done/total)+'%');}});
+      writable=null;
+      status('Streaming WAV exported to the selected file.');
+    } catch(err) {
+      if(writable)try{await writable.abort();}catch(_){}
+      status('Streaming WAV failed: '+(err.message||String(err)),true);
+    } finally {
+      $('stemClipStart').value=originalStart;$('stemClipEnd').value=originalEnd;
+      exportSession=null;clearPreview();renderActions();
     }
   }
   function download(bytes,filename,type) {
