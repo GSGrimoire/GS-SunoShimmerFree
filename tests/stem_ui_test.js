@@ -107,6 +107,10 @@ async function flush(){
   assert.equal(h.audios.length,1,'mixed audio compiled');
   assert(Math.abs(h.audios[0].getChannelData(0)[2]-.5)<1e-6,'mix sums two enabled stems without normalizing');
   assert.equal(h.el('stemExport').disabled,false);
+  assert.match(h.el('stemMixInfo').textContent,/STEM PREVIEW LEVELS/,
+    'mix preview includes integrated per-stem diagnostics');
+  assert.match(h.el('stemMixInfo').textContent,/Lead Vocals: processed preview peak 0\\.200/);
+  assert.match(h.el('stemMixInfo').textContent,/Drums: processed preview peak 0\\.300/);
   // The synthetic document does not parse select option defaults.
   h.el('stemBits').value='32';
   h.el('stemExport').fire('click');
@@ -116,6 +120,8 @@ async function flush(){
   h.el('stemBuild').fire('click');await flush();
   assert.equal(h.audios.length,2);
   assert(Math.abs(h.audios[1].getChannelData(0)[2]-.2)<1e-6,'muted stem excluded from mix');
+  assert.doesNotMatch(h.el('stemMixInfo').textContent,/Drums: processed preview peak/,
+    'muted stems are not misleadingly reported as analyzed');
   h.stems[0].enabled=false;h.stems[1].mute=false;h.stems[1].solo=true;
   h.el('stemBuild').fire('click');await flush();
   assert.equal(h.audios.length,3);
@@ -240,6 +246,15 @@ async function flush(){
   await flush();
   assert.equal(q.downloaded.length,0,'stale cancelled MP3 job must not download');
   q.ui.close();
+
+  // Above-full-scale samples are counted per channel, not silently normalized.
+  const hot=harness([fakeStem('Hot',1.2,48000,0.01)]);
+  await hot.ui.open({name:'Hot.zip',size:100});
+  hot.el('stemBuild').fire('click');await flush();
+  assert.match(hot.el('stemMixInfo').textContent,/Hot: processed preview peak 1\\.200/);
+  assert.match(hot.el('stemMixInfo').textContent,/above-full-scale channel samples/);
+  assert.equal(hot.el('stemExport').disabled,false,'diagnostic is not destructive');
+  hot.ui.close();
 
   // A different WAV sample rate is rejected before silent resampling.
   const j=harness([fakeStem('First',.2,48000,1),fakeStem('Other',.3,44100,1)]);

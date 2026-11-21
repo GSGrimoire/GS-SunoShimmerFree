@@ -471,7 +471,7 @@
     if (!selected.length) {
       busy=false;renderActions();status('Enable at least one unmuted stem, or select Solo.',true);return;
     }
-    var mismatchMessages = [], passageWarnings = [];
+    var mismatchMessages = [], passageWarnings = [], stemDiagnostics = [];
     try {
       var rate=0, frames=0, sourceFrames=0, clipStartFrame=0,
         allocated=0, firstNativeRate=0;
@@ -533,6 +533,22 @@
         data=clipDecoded(data,clipStartFrame,frames);
         data=await processed(s,data,gen);
         ensureFresh(gen);
+        // Diagnose only the decoded/processed preview, never claim full-song analysis.
+        // Scan existing channel arrays without retaining another audio copy.
+        var stemPeak = 0, overFullScale = 0;
+        for (var dc=0;dc<data.channels.length;dc++) {
+          var channel=data.channels[dc];
+          for (var dj=0;dj<channel.length;dj++) {
+            var value=channel[dj];
+            if (!Number.isFinite(value))
+              throw new Error(s.name + ' contains a non-finite processed sample; mix not published.');
+            var magnitude=Math.abs(value);
+            if (magnitude>stemPeak) stemPeak=magnitude;
+            if (magnitude>1) overFullScale++;
+          }
+        }
+        stemDiagnostics.push(s.name + ': processed preview peak ' + stemPeak.toFixed(3) +
+          (overFullScale ? ' (' + overFullScale + ' above-full-scale channel samples)' : ''));
         sumInto(mix,data,s,clipStartFrame);
         // Do not retain decoded input/processed channels after summing them.
       }
@@ -544,7 +560,8 @@
         ' [' + clipStart.toFixed(1) + 's-' +
         (clipEnd===0 ? (sourceFrames/rate).toFixed(1) : clipEnd.toFixed(1)) + 's]';
       $('stemMixInfo').textContent = audioLabel + ' · ' + fmtTime(buffer.duration) +
-        ' · ' + rate + ' Hz · peak ' + peak.toFixed(3) +
+        ' · ' + rate + ' Hz · mix peak ' + peak.toFixed(3) +
+        ' · STEM PREVIEW LEVELS (before mix gain and passage attenuation): ' + stemDiagnostics.join('; ') +
         (peak>1?' (above full scale: integer WAV/MP3 may clip)':'') +
         (mismatchMessages.length?' · LENGTH/RATE WARNING: '+mismatchMessages.join(' '):'') +
         (passageWarnings.length?' · PASSAGE WARNING: '+passageWarnings.join(' '):'');
