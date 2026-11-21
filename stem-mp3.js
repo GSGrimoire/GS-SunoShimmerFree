@@ -66,9 +66,14 @@
             offset+h.size>bytes.length)
           throw new Error('Invalid or changing MP3 frame sequence.');
         var stamp=Math.round(frameNumber*1152*1000000/first.rate);
-        decoder.decode(new root.EncodedAudioChunk({type:'key',timestamp:stamp,
-          data:bytes.subarray(offset,offset+h.size)}));
-        frameNumber++;offset+=h.size;count++;
+        // Continue scanning frame headers for timeline duration, but stop
+        // feeding decoder after the requested passage and two guard frames.
+        if (frameNumber*1152 <= end+2304) {
+          decoder.decode(new root.EncodedAudioChunk({type:'key',timestamp:stamp,
+            data:bytes.subarray(offset,offset+h.size)}));
+          count++;
+        }
+        frameNumber++;offset+=h.size;
         if (count===16) {
           await decoder.flush();count=0;
           if (failure) throw failure;
