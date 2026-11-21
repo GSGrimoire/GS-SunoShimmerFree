@@ -128,7 +128,7 @@ async function flush(){
   assert.equal(h.audios.length,1,'mixed audio compiled');
   assert.match(h.el('stemMemory').textContent,/decoded source 0\\.4 MiB, preview buffers 0\\.7 MiB/,
     'visible memory report identifies source and preview allocations');
-  assert.match(h.el('stemMemory').textContent,/Audio decoder\\/native memory is not measured/,
+  assert.match(h.el('stemMemory').textContent,/Audio decoder.native memory is not measured/,
     'memory telemetry must not claim to measure native decoder memory');
   assert(Math.abs(h.audios[0].getChannelData(0)[2]-.5)<1e-6,'mix sums two enabled stems without normalizing');
   assert.equal(h.el('stemExport').disabled,false);
