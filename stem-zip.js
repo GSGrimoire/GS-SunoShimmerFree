@@ -148,9 +148,12 @@
       s.entry = s.wav || s.mp3; s.format = s.wav ? 'WAV' : 'MP3';
     });
     var spans = [];
-    async function extract(entry) {
+    async function extract(entry, signal) {
       ensure(entries.indexOf(entry) >= 0, 'unknown entry');
+      function active() { ensure(!signal || !signal.aborted, 'extraction cancelled'); }
+      active();
       var header = await file.slice(entry.offset, entry.offset + 30).arrayBuffer();
+      active();
       ensure(header.byteLength === 30, 'truncated local header');
       var h = new DataView(header);
       ensure(h.getUint32(0, true) === 0x04034b50, 'bad local header');
@@ -158,6 +161,7 @@
       var nameLength = h.getUint16(26, true), extraLength = h.getUint16(28, true);
       ensure(nameLength === entry.rawName.length, 'local name length differs');
       var pathBytes = new Uint8Array(await file.slice(entry.offset + 30, entry.offset + 30 + nameLength).arrayBuffer());
+      active();
       ensure(pathBytes.every(function(b,i) { return b === entry.rawName[i]; }), 'local name differs');
       var from = entry.offset + 30 + nameLength + extraLength, end = from + entry.compressed;
       ensure(end <= start, 'compressed entry overlaps directory');
@@ -167,14 +171,23 @@
       var stream = file.slice(from, end).stream();
       if (entry.method === 8) stream = stream.pipeThrough(new DecompressionStream('deflate-raw'));
       var reader = stream.getReader(), result = new Uint8Array(entry.size), written = 0;
+      var onAbort = function() { reader.cancel('Extraction cancelled').catch(function(){}); };
+      if (signal) signal.addEventListener('abort', onAbort, {once:true});
       try {
+        active();
         while (true) {
+          active();
           var next = await reader.read();
+          active();
           if (next.done) break;
           ensure(written + next.value.length <= entry.size, 'entry expands beyond declared size');
           result.set(next.value, written); written += next.value.length;
         }
-      } finally { reader.releaseLock(); }
+      } finally {
+        if (signal) signal.removeEventListener('abort', onAbort);
+        reader.releaseLock();
+      }
+      active();
       ensure(written === entry.size, 'uncompressed length mismatch');
       ensure(crc32(result) === entry.crc, 'CRC mismatch: ' + entry.name);
       return result.buffer;
