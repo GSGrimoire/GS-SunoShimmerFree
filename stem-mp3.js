@@ -74,7 +74,7 @@
       if (count) await decoder.flush();
       active();if (failure) throw failure;
       if (frameNumber*1152<end) throw new Error('Requested MP3 passage exceeds source duration.');
-      return {channels:channels,sr:first.rate,originalRate:first.rate,kind:'MP3'};
+      return {channels:channels,sr:first.rate,originalRate:first.rate,kind:'MP3',\n        sourceFrames:frameNumber*1152,passageStartFrame:start};
     } finally {
       if (signal) signal.removeEventListener('abort',abort);
       try {decoder.close();}catch(_){}
