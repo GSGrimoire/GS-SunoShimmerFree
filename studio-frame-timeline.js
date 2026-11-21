@@ -35,9 +35,10 @@ export function mapTimelineWindow(timeline, { startFrame, frameCount }) {
     const overlapStart = Math.max(startFrame, track.startFrame);
     const overlapEnd = Math.min(endFrame, track.startFrame + track.frameCount);
     if (overlapStart >= overlapEnd) return Object.freeze({ id: track.id, silent: true });
+    const relativeFrame = overlapStart - track.startFrame;
     return Object.freeze({ id: track.id, silent: false,
       outputOffsetFrames: overlapStart - startFrame,
-      sourceStartFrame: track.sourceStartFrame + overlapStart - track.startFrame,
+      sourceStartFrame: track.sourceStartFrame + relativeFrame,
       frameCount: overlapEnd - overlapStart });
   }));
 }
