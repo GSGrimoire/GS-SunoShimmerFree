@@ -1,0 +1,23 @@
+name: Verified source bytes checks
+on:
+  push:
+    paths:
+      - 'studio-source-bytes.js'
+      - 'tests/studio_source_bytes_test.js'
+      - '.github/workflows/source-bytes.yml'
+  pull_request:
+    paths:
+      - 'studio-source-bytes.js'
+      - 'tests/studio_source_bytes_test.js'
+      - '.github/workflows/source-bytes.yml'
+jobs:
+  source-bytes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/studio_source_bytes_test.js
