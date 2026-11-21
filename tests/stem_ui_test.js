@@ -62,6 +62,12 @@ function harness(stems, options={}) {
     resume(){return Promise.resolve();}
     close(){return Promise.resolve();}
     decodeAudioData(){
+      if(options.mp3NoFullCopy) {
+        const channel=new Float32Array(48000).fill(.25);
+        channel.slice=()=>{throw Error('Full MP3 channel cloning is forbidden');};
+        return Promise.resolve({length:48000,numberOfChannels:2,
+          getChannelData(){return channel;}});
+      }
       if(options.oversizedMp3) return Promise.resolve({length:30000000,numberOfChannels:2,
         getChannelData(){throw Error('Oversized decoder must not copy channels');}});
       throw Error('Unexpected MP3 decode in WAV-only test');
@@ -217,6 +223,21 @@ async function flush(){
   assert.match(p.el('stemStatus').textContent,/shorter than one audio sample/);
   assert.equal(p.el('stemExport').disabled,true,'zero-frame range cannot export');
   p.ui.close();
+
+  // MP3 preview must copy only the selected passage, never the full
+  // decoded AudioBuffer channel. The source throws if .slice() is called.
+  const mp3=fakeStem('MP3 no-copy',.25);
+  mp3.wav=null;mp3.mp3=mp3.entry;mp3.format='MP3';
+  const mp3Preview=harness([mp3],{mp3NoFullCopy:true});
+  await mp3Preview.ui.open({name:'MP3 preview.zip',size:1234});
+  mp3Preview.el('stemClipStart').value='0.25';
+  mp3Preview.el('stemClipEnd').value='0.5';
+  mp3Preview.el('stemBuild').fire('click');await flush();
+  assert.equal(mp3Preview.audios.length,1,'MP3 short preview builds without full source clone');
+  assert.equal(mp3Preview.audios[0].length,12000,'only selected quarter-second allocated');
+  assert(Math.abs(mp3Preview.audios[0].getChannelData(0)[100]-.25)<1e-6,
+    'MP3 short preview preserves sample value');
+  mp3Preview.ui.close();
 
   // A malicious or simply long MP3 must not trigger a second full-sized
   // channel allocation after browser decode. No huge synthetic allocation is
