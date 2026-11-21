@@ -61,8 +61,8 @@ class FakeDecoder {
   const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
   const mp3='<script src="stem-mp3.js"></script>';
   const resample='<script src="stem-resample.js"></script>';
-  assert(html.includes(mp3+'\\n'+resample),'script tags must be separated by an actual newline');
-  assert(!html.includes(mp3+'\\\\n'+resample),'literal escaped newline is invalid');
+  assert(html.includes(mp3+String.fromCharCode(10)+resample),'script tags must be separated by an actual newline');
+  assert(!html.includes(mp3+String.fromCharCode(92)+'n'+resample),'literal escaped newline is invalid');
   assert.equal(html.split(mp3).length-1,1);
   assert.equal(html.split(resample).length-1,1);
 }
