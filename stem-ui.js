@@ -9,7 +9,7 @@
   var LENGTH_TOLERANCE_SECONDS = 0.025;
   var current = null, generation = 0, worker = null;
   var context = null, buffer = null, source = null, startedAt = 0, position = 0, playing = false;
-  var audioLabel = '', busy = false, timer = 0, objectUrl = null;
+  var audioLabel = '', busy = false, timer = 0, objectUrl = null, pendingProcessAbort = null;
   var box, els = {};
   var defaultOptions = ['natural','clear','warm','forward'];
   function $(id) { return els[id]; }
@@ -101,6 +101,14 @@
   }
   function cancel() {
     generation++;
+    // Terminating a Worker alone does not settle the Promise awaiting it.
+    // Reject the active processing job before releasing the Worker so the
+    // suspended build can unwind and drop its decoded/mix references.
+    if (pendingProcessAbort) {
+      var abort = pendingProcessAbort;
+      pendingProcessAbort = null;
+      abort();
+    }
     if (worker) { worker.terminate(); worker = null; }
     busy = false;
     renderActions();
@@ -339,22 +347,49 @@
       try { w = new Worker('stem-audio-worker.js'); } catch (e) {
         reject(new Error('This browser cannot start the local stem-processing worker.')); return;
       }
+      var settled = false;
+      function settle(err, value) {
+        if (settled) return;
+        settled = true;
+        if (pendingProcessAbort === abort) pendingProcessAbort = null;
+        if (worker === w) worker = null;
+        try { w.terminate(); } catch (_) {}
+        if (err) reject(err); else resolve(value);
+      }
+      function abort() { settle(new Error('Cancelled.')); }
       worker = w;
+      pendingProcessAbort = abort;
       w.onmessage = function(e) {
         if (gen !== generation || worker !== w) return;
-        if (e.data.type === 'done') { worker = null; w.terminate(); resolve(e.data); }
-        else if (e.data.type === 'error') { worker = null; w.terminate(); reject(new Error(e.data.message)); }
+        if (e.data.type === 'done') settle(null, e.data);
+        else if (e.data.type === 'error')
+          settle(new Error(e.data.message || 'Stem processing failed.'));
       };
       w.onerror = function(e) {
         if (e.preventDefault) e.preventDefault();
         if (gen !== generation || worker !== w) return;
-        worker = null; w.terminate(); reject(new Error(e.message || 'Stem-processing worker failed.'));
+        settle(new Error(e.message || 'Stem-processing worker failed.'));
       };
-      w.postMessage(args, channels.map(function(ch){return ch.buffer;}));
+      try {
+        w.postMessage(args, channels.map(function(ch){return ch.buffer;}));
+      } catch (err) {
+        settle(new Error('Could not send audio to stem worker: ' + (err.message || String(err))));
+      }
     });
     ensureFresh(gen);
     if (outcome.note) status(stem.name + ': ' + outcome.note);
     return {channels: outcome.channels, sr: data.sr};
+  }
+  function validatePassage(stem) {
+    var from = Number(stem.passageStart == null ? 0 : stem.passageStart),
+      to = Number(stem.passageEnd == null ? 0 : stem.passageEnd),
+      reduction = Number(stem.passageReduction == null ? 0 : stem.passageReduction);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(reduction) ||
+        from < 0 || to < 0 || reduction < 0 || reduction > 100)
+      throw new Error(stem.name + ': passage values must be finite and nonnegative; reduction 0-100%.');
+    if (reduction > 0 && to <= from)
+      throw new Error(stem.name + ': passage end must be after start when reduction is enabled.');
+    return {from: from, to: to, reduction: reduction / 100};
   }
   function sumInto(mix, data, stem) {
     var gain = Math.pow(10, stem.volume / 20), n=Math.min(mix[0].length, data.channels[0].length);
