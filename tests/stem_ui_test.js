@@ -61,7 +61,11 @@ function harness(stems, options={}) {
     createBufferSource(){return {connect(){},disconnect(){},start(){},stop(){}};}
     resume(){return Promise.resolve();}
     close(){return Promise.resolve();}
-    decodeAudioData(){throw Error('Unexpected MP3 decode in WAV-only test');}
+    decodeAudioData(){
+      if(options.oversizedMp3) return Promise.resolve({length:30000000,numberOfChannels:2,
+        getChannelData(){throw Error('Oversized decoder must not copy channels');}});
+      throw Error('Unexpected MP3 decode in WAV-only test');
+    }
   }
   class Worker {
     constructor(url){this.url=url;this.terminated=false;workers.push(this);}
@@ -211,6 +215,19 @@ async function flush(){
   assert.match(p.el('stemStatus').textContent,/shorter than one audio sample/);
   assert.equal(p.el('stemExport').disabled,true,'zero-frame range cannot export');
   p.ui.close();
+
+  // A malicious or simply long MP3 must not trigger a second full-sized
+  // channel allocation after browser decode. No huge synthetic allocation is
+  // required: the decoder advertises a length and throws on channel access.
+  const huge=fakeStem('Long MP3',.2);
+  huge.wav=null;huge.mp3=huge.entry;huge.format='MP3';
+  const oversized=harness([huge],{oversizedMp3:true});
+  await oversized.ui.open({name:'Long source.zip',size:1234});
+  oversized.el('stemBuild').fire('click');await flush();
+  assert.match(oversized.el('stemStatus').textContent,/96 MiB per-stem workspace budget/);
+  assert.equal(oversized.audios.length,0,'oversized decoded MP3 never allocates preview');
+  assert.equal(oversized.el('stemExport').disabled,true,'oversized decoded MP3 cannot export');
+  oversized.ui.close();
 
   // Cancellation must also settle a pending ZIP extraction await. The
   // browser/archive may finish the original operation later; stale data must
