@@ -7,7 +7,7 @@ const stream=require('../stem-wav-stream.js');
   const chunks=[];let closed=false,aborted=false;
   const sink={async write(b){chunks.push(new Uint8Array(b));},async close(){closed=true;},
     async abort(){aborted=true;}};
-  await stream.write({rate:48000,startFrame:100,endFrame:111,bits:16,chunkFrames:4,
+  await stream.write({rate:48000,startFrame:100,endFrame:111,bits:16,chunkFrames:4,codec:codec,
     writable:sink,getChunk:async(pos,n)=>[
       Float32Array.from({length:n},(_,i)=>(pos+i)/1000),
       Float32Array.from({length:n},(_,i)=>-(pos+i)/1000)]});
@@ -24,7 +24,7 @@ const stream=require('../stem-wav-stream.js');
   const failed={async write(){},async close(){throw Error('must not close');},async abort(){aborted=true;}};
   aborted=false;
   await assert.rejects(stream.write({rate:48000,startFrame:0,endFrame:10,bits:24,
-    chunkFrames:5,writable:failed,getChunk:async()=>{throw Error('chunk failed');}}),/chunk failed/);
+    chunkFrames:5,writable:failed,codec:codec,getChunk:async()=>{throw Error('chunk failed');}}),/chunk failed/);
   assert(aborted,'failed chunk must abort output sink');
   assert.throws(()=>stream.header(48000,0xffffffff,32),/4 GiB/);
   console.log('Streaming WAV tests passed: sample parity, RIFF length, chunks, abort, size cap.');
