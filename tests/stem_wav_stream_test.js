@@ -26,6 +26,11 @@ const stream=require('../stem-wav-stream.js');
   await assert.rejects(stream.write({rate:48000,startFrame:0,endFrame:10,bits:24,
     chunkFrames:5,writable:failed,codec:codec,getChunk:async()=>{throw Error('chunk failed');}}),/chunk failed/);
   assert(aborted,'failed chunk must abort output sink');
+  aborted=false;
+  await assert.rejects(stream.write({rate:48000,startFrame:0,endFrame:1,bits:16,
+    writable:{async write(){throw Error('header write failed');},async abort(){aborted=true;}},
+    codec:codec,getChunk:async()=>[new Float32Array(1),new Float32Array(1)]}),/header write failed/);
+  assert(aborted,'failed header write must abort output sink');
   assert.throws(()=>stream.header(48000,0xffffffff,32),/4 GiB/);
   console.log('Streaming WAV tests passed: sample parity, RIFF length, chunks, abort, size cap.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
