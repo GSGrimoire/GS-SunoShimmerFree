@@ -67,13 +67,15 @@ function harness(stems, options={}) {
     constructor(url){this.url=url;this.terminated=false;workers.push(this);}
     postMessage(m){
       if(this.url==='stem-audio-worker.js') {
-        if(options.holdStemWorker) { this.pending=m; return; }
+        if(options.holdStemWorker) {this.pending=m;return;}
         let channels=m.channels;
         if(m.clean)channels=Engine.process(channels,m.sampleRate,Engine.DEFAULTS).clean;
         if(m.polish)channels=Polish.process(channels,m.sampleRate,m.polishParams).channels;
         queueMicrotask(()=>this.onmessage&&this.onmessage({data:{type:'done',channels}}));
-      } else if(this.url==='export-worker.js')
+      } else if(this.url==='export-worker.js') {
+        if(options.holdMp3Export) {this.pending=m;return;}
         queueMicrotask(()=>this.onmessage&&this.onmessage({data:{type:'done',bytes:Uint8Array.of(1,2),peak:.3}}));
+      }
       else throw Error('Unknown worker '+this.url);
     }
     terminate(){this.terminated=true;}
@@ -134,25 +136,110 @@ async function flush(){
   assert(h.workers.some(w=>w.url==='stem-audio-worker.js'),'stem polish worker was used');
   assert.equal(h.el('stemExport').disabled,false);
 
-  // Integration regression: a silent processing worker must not leave a suspended
-  // build alive after cancellation, and late results must not replace new audio.
-  const k=harness([fakeStem('Silent worker',.2)],{holdStemWorker:true});
-  await k.ui.open({name:'Worker test.zip',size:1234});
+  // Build only a 1-3 second passage from longer sources. Apply a time-local
+  // attenuation only to Other, without removing Percussion or altering sync.
+  const p=harness([fakeStem('Other',.2,48000,4),fakeStem('Percussion',.3,48000,4)]);
+  await p.ui.open({name:'Passage Stems.zip',size:2000});
+  p.el('stemClipStart').value='1';
+  p.el('stemClipEnd').value='3';
+  p.stems[0].passageStart=1.5;
+  p.stems[0].passageEnd=2.5;
+  p.stems[0].passageReduction=100;
+  p.el('stemBuild').fire('click');await flush();
+  assert.equal(p.el('stemExport').disabled,false,'passage preview succeeded');
+  const segment=p.audios.at(-1).getChannelData(0);
+  assert.equal(segment.length,96000,'only the requested two seconds are compiled');
+  assert(Math.abs(segment[12000]-.5)<1e-6,'both stems audible before the mute');
+  assert(Math.abs(segment[48000]-.3)<1e-6,'Other is muted only during its interval');
+  assert(Math.abs(segment[84000]-.5)<1e-6,'Other returns after the mute');
+  assert(Math.abs(segment[24480]-.4)<1e-5,'20 ms fade-in is halfway after 10 ms');
+  assert(Math.abs(segment[71520]-.4)<1e-5,'20 ms fade-out restores volume before the end');
+  assert(Math.abs(segment[24000]-.5)<1e-6,'no discontinuity at passage start');
+  assert(Math.abs(segment[72000]-.5)<1e-6,'no discontinuity at passage end');
+  assert.equal(p.audios.at(-1).duration,2,'output duration is the selected preview');
+  p.stems[0].passageReduction=0;
+  p.el('stemBuild').fire('click');await flush();
+  assert(Math.abs(p.audios.at(-1).getChannelData(0)[48000]-.5)<1e-6,
+    'bypass restores original stem without destructive changes');
+  p.stems[0].passageReduction=100;
+  p.stems[0].passageEnd=1.0;
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/passage end must be after start/);
+  assert.equal(p.el('stemExport').disabled,true,'invalid passage cannot export');
+  p.stems[0].passageEnd=2.5;
+  p.el('stemClipEnd').value='5';
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/outside the first stem duration/);
+  p.el('stemClipEnd').value='3';
+  p.el('stemClipStart').value='3';
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/Preview range must/);
+  // Inert selected-stem intervals must be visibly explained, not mistaken
+  // for a failed shimmer-removal algorithm.
+  p.stems[0].passageStart=3.3;
+  p.stems[0].passageEnd=3.7;
+  p.stems[0].passageReduction=100;
+  p.el('stemClipStart').value='1';p.el('stemClipEnd').value='3';
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/does not overlap the selected preview/);
+  assert.equal(p.el('stemExport').disabled,false,'off-preview edit is allowed with a warning');
+  p.stems[0].passageStart=5;
+  p.stems[0].passageEnd=6;
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/beyond the source duration/);
+  p.stems[0].passageStart=1.5;
+  p.stems[0].passageEnd=7;
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/extends beyond the available source/);
+  p.stems[0].passageStart=NaN;
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/passage values must be finite/);
+  assert.equal(p.el('stemExport').disabled,true);
+  p.stems[0].passageStart=1.5;
+  p.stems[0].passageEnd=2.5;
+  p.el('stemClipEnd').value='1.000001';
+  p.el('stemBuild').fire('click');await flush();
+  assert.match(p.el('stemStatus').textContent,/shorter than one audio sample/);
+  assert.equal(p.el('stemExport').disabled,true,'zero-frame range cannot export');
+  p.ui.close();
+
+  // Cancellation while a worker is pending must terminate the old job and
+  // permit a clean rebuild. Its late messages must never publish stale audio.
+  const k=harness([fakeStem('Slow',.2)],{holdStemWorker:true});
+  await k.ui.open({name:'Slow Stem.zip',size:1234});
   k.stems[0].clean=true;
   k.el('stemBuild').fire('click');await flush();
   const pending=k.workers.find(w=>w.url==='stem-audio-worker.js');
-  assert(pending && !pending.terminated,'worker is pending before cancellation');
+  assert(pending && !pending.terminated,'test processing worker remains pending');
+  assert.equal(k.el('stemStop').disabled,false,'cancel is available while processing');
   k.el('stemStop').fire('click');await flush();
-  assert(pending.terminated,'cancel terminates the pending worker');
-  assert.equal(k.el('stemBuild').disabled,false,'cancel releases build controls');
+  assert.equal(pending.terminated,true,'cancellation terminates the active worker');
+  assert.equal(k.el('stemBuild').disabled,false,'cancellation resets the workspace');
   k.stems[0].clean=false;
   k.el('stemBuild').fire('click');await flush();
-  assert.equal(k.audios.length,1,'fresh build completes after cancellation');
+  assert.equal(k.audios.length,1,'fresh unprocessed mix builds after cancelling worker');
   pending.onmessage({data:{type:'done',channels:[samples(.9,48000,1),samples(.9,48000,1)]}});
   await flush();
-  assert.equal(k.audios.length,1,'stale worker cannot publish a second preview');
-  assert(Math.abs(k.audios[0].getChannelData(0)[2]-.2)<1e-6,'new preview retains correct audio');
+  assert.equal(k.audios.length,1,'late result of terminated worker cannot create preview');
+  assert(Math.abs(k.audios.at(-1).getChannelData(0)[2]-.2)<1e-6,
+    'late result cannot replace fresh audio');
   k.ui.close();
+
+  // MP3 export has no pending Promise, but cancelling a held encoder must
+  // likewise ignore a synthetic late result and never trigger a download.
+  const q=harness([fakeStem('Export',.2)],{holdMp3Export:true});
+  await q.ui.open({name:'Export.zip',size:1234});
+  q.el('stemBuild').fire('click');await flush();
+  q.el('stemBits').value='mp3-320';
+  q.el('stemExport').fire('click');await flush();
+  const encoder=q.workers.find(w=>w.url==='export-worker.js');
+  assert(encoder && !encoder.terminated);
+  q.el('stemStop').fire('click');await flush();
+  assert(encoder.terminated,'cancelled encoder is terminated');
+  encoder.onmessage({data:{type:'done',bytes:Uint8Array.of(4,5),peak:.2}});
+  await flush();
+  assert.equal(q.downloaded.length,0,'stale cancelled MP3 job must not download');
+  q.ui.close();
 
   // A different WAV sample rate is rejected before silent resampling.
   const j=harness([fakeStem('First',.2,48000,1),fakeStem('Other',.3,44100,1)]);
