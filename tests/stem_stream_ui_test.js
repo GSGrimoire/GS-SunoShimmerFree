@@ -159,7 +159,7 @@ function joined(writes) {
     const reference=h.audios.at(-1);
     h.el('stemStreamExport').fire('click');
     await until(()=>file.state.closed || file.state.aborted);
-    assert(file.state.closed && !file.state.aborted,'stream must close cleanly');
+    assert(file.state.closed && !file.state.aborted,'stream must close cleanly: '+h.el('stemStatus').textContent);
     const decoded=wav.decodeWav(joined(file.writes));
     assert.equal(decoded.sampleRate,rate);
     assert.equal(decoded.channels[0].length,length);
