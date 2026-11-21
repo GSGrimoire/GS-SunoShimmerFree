@@ -149,6 +149,9 @@ function joined(writes) {
     }
     const stem=fakeStem('Boundary',.1,rate,21);
     stem._file=wav.encodeWav([left,right],rate,32);
+    // The 20 ms passage fade straddles the first chunk boundary.
+    stem.passageStart=9.99;stem.passageEnd=10.03;stem.passageReduction=80;
+    stem.volume=-2.5;
     const file=fileSink(), h=harness([stem],{fileHandle:file.handle});
     await h.ui.open({name:'Boundary.zip',size:1234});
     h.el('stemBits').value='32';
@@ -188,5 +191,5 @@ function joined(writes) {
   assert.equal(file.writes.length,0,'stale picker must not write');
   assert.equal(h.el('stemStreamExport').disabled,false,'picker cancellation releases lock');
   h.ui.close();
-  console.log('Stem stream integration passed: full-reference sample parity across 10-second boundaries at 44.1/48 kHz and stale picker rejection.');
+  console.log('Stem stream integration passed: full-reference parity across 10-second boundaries with passage attenuation/gain at 44.1/48 kHz and stale picker rejection.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
