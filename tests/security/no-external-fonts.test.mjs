@@ -7,13 +7,13 @@ import assert from 'node:assert/strict';
 const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
 
 test('landing page has no third-party Google Fonts endpoints', () => {
-  assert.doesNotMatch(html, /(?:fonts\\.googleapis\\.com|fonts\\.gstatic\\.com)/i);
+  assert.doesNotMatch(html, /(?:fonts\.googleapis\.com|fonts\.gstatic\.com)/i);
 });
 
 test('landing page does not passively connect to external style or font hosts', () => {
-  const tags = html.match(/<link\\b[^>]*>/gi) ?? [];
+  const tags = html.match(/<link\b[^>]*>/gi) ?? [];
   for (const tag of tags) {
-    if (!/\\brel\\s*=\\s*['\"]?(?:stylesheet|preconnect|preload)/i.test(tag)) continue;
-    assert.doesNotMatch(tag, /\\bhref\\s*=\\s*['\"]?https?:\\/\\//i, `External resource link: ${tag}`);
+    if (!/\brel\s*=\s*['\"]?(?:stylesheet|preconnect|preload)/i.test(tag)) continue;
+    assert.doesNotMatch(tag, /\bhref\s*=\s*['\"]?https?:\/\//i, `External resource link: ${tag}`);
   }
 });
