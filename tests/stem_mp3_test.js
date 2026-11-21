@@ -39,11 +39,12 @@ class FakeDecoder {
   close(){this.closed=true;}
 }
 (async()=>{
-  const priorDecoder=global.AudioDecoder,priorChunk=global.EncodedAudioChunk;
-  global.AudioDecoder=FakeDecoder;global.EncodedAudioChunk=FakeChunk;
-  // The module's root is Node global in this CommonJS environment.
-  try {
-    const out=await Decoder.decodePassage(bytes,1152/44100,3*1152/44100);
+  const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+  const root={AudioDecoder:FakeDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:root,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
+  {
+    const out=await root.SunoStemMp3.decodePassage(bytes,1152/44100,3*1152/44100);
     assert.equal(out.channels[0].length,2304);
     assert.equal(out.passageStartFrame,1152);
     assert.equal(out.sourceFrames,40*1152);
@@ -51,6 +52,6 @@ class FakeDecoder {
     assert.equal(out.channels[1][2303],-.125);
     assert.equal(FakeDecoder.instances.at(-1).flushes,1,'MP3 reservoir must not be reset every 16 frames');
     assert(FakeDecoder.instances.at(-1).closed,'decoder must close');
-  } finally {global.AudioDecoder=priorDecoder;global.EncodedAudioChunk=priorChunk;}
+  }
   console.log('Synthetic decoder timestamp and single-flush tests passed; real WebCodecs remains unverified.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
