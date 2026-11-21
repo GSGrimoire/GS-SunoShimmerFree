@@ -58,6 +58,9 @@
       decoder.configure({codec:'mp3',sampleRate:first.rate,numberOfChannels:first.channels});
       while (offset<bytes.length) {
         active();
+        // ID3v1 metadata is a 128-byte trailer, not an MP3 frame.
+        if (offset+128===bytes.length && bytes[offset]===84 &&
+            bytes[offset+1]===65 && bytes[offset+2]===71) break;
         var h=header(bytes,offset);
         if (!h || h.rate!==first.rate || h.channels!==first.channels ||
             offset+h.size>bytes.length)
