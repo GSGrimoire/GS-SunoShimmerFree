@@ -55,3 +55,12 @@ class FakeDecoder {
   }
   console.log('Synthetic decoder timestamp and single-flush tests passed; real WebCodecs remains unverified.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+{
+  const fs=require('node:fs'),path=require('node:path');
+  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+  assert.match(html,/<script src="stem-mp3\\.js"><\\/script>\\s*<script src="stem-resample\\.js"><\\/script>/);
+  assert.doesNotMatch(html,/<script src="stem-mp3\\.js"><\\/script>\\\\n/,'script tags must not contain literal escaped newline');
+  assert.equal((html.match(/<script src="stem-mp3\\.js"><\\/script>/g)||[]).length,1);
+  assert.equal((html.match(/<script src="stem-resample\\.js"><\\/script>/g)||[]).length,1);
+}
