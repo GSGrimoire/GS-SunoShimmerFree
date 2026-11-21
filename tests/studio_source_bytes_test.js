@@ -6,10 +6,12 @@ const { verifySourceBytes, DEFAULT_LIMIT } = require('../studio-source-bytes.js'
 const shaEmpty = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const shaAbc = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
 const opts = { cryptoProvider: webcrypto };
-test('hashes exact immutable source Blob and returns identity', async () => {
+test('hashes exact immutable source Blob and returns native snapshot', async () => {
   const blob = new Blob(['abc']);
   const value = await verifySourceBytes(blob, shaAbc.toUpperCase(), opts);
-  assert.equal(value.blob, blob); assert.equal(value.digest, shaAbc); assert.equal(value.byteLength, 3);
+  assert.notEqual(value.blob, blob); assert.equal(Object.getPrototypeOf(value.blob), Blob.prototype);
+  assert.equal(Buffer.from(await value.blob.arrayBuffer()).toString(), 'abc');
+  assert.equal(value.digest, shaAbc); assert.equal(value.byteLength, 3);
   assert.ok(Object.isFrozen(value));
 });
 test('same-size swapped bytes and filename-independent digest are rejected', async () => {
@@ -50,9 +52,24 @@ test('hashes native stored bytes despite overridden Blob methods and size', asyn
   await assert.rejects(verifySourceBytes(new MisleadingBlob(['BAD']), shaAbc, opts), /mismatch/);
   const value = await verifySourceBytes(new MisleadingBlob(['abc']), shaAbc, opts);
   assert.equal(value.byteLength, 3);
+  assert.equal(Object.getPrototypeOf(value.blob), Blob.prototype);
+  assert.equal(Buffer.from(await value.blob.arrayBuffer()).toString(), 'abc');
 });
 test('rejects Blob prototype forgery without native internal slots', async () => {
   const forged = Object.create(Blob.prototype);
   forged.arrayBuffer = async () => new TextEncoder().encode('abc').buffer;
   await assert.rejects(verifySourceBytes(forged, shaAbc, opts), /native local Blob/);
+});
+
+test('verified snapshot is immune to hostile subclass and later method mutation', async () => {
+  class HostileBlob extends Blob {
+    async arrayBuffer() { return new TextEncoder().encode('BAD').buffer; }
+  }
+  const source = new HostileBlob(['abc']);
+  const verified = await verifySourceBytes(source, shaAbc, opts);
+  source.arrayBuffer = async () => new TextEncoder().encode('EVIL').buffer;
+  assert.notEqual(verified.blob, source);
+  assert.equal(Object.getPrototypeOf(verified.blob), Blob.prototype);
+  assert.equal(Buffer.from(await verified.blob.arrayBuffer()).toString(), 'abc');
+  assert.equal(verified.digest, shaAbc);
 });
