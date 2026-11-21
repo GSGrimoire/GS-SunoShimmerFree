@@ -80,8 +80,16 @@ function harness(stems, options={}) {
     }
     terminate(){this.terminated=true;}
   }
+  let releaseHeldExtract=null, heldOnce=false;
   const archive={stems,file:{name:'Synthetic Stems.zip'},compressedBytes:2000,totalBytes:stems.reduce((sum,x)=>sum+x._file.byteLength,0),
-    async extract(entry){const s=stems.find(x=>x.entry===entry);if(!s)throw Error('Missing synthetic entry');return s._file;}};
+    async extract(entry){
+      const s=stems.find(x=>x.entry===entry);if(!s)throw Error('Missing synthetic entry');
+      if(options.holdFirstExtract && !heldOnce) {
+        heldOnce=true;
+        return new Promise(resolve=>{releaseHeldExtract=()=>resolve(s._file);});
+      }
+      return s._file;
+    }};
   const root={SunoStemZip:{open:async()=>archive},WavCodec:wav,ShimmerEngine:Engine,
     SunoStemResample:Resample,AudioContext:AC,
     confirm:()=>true};
@@ -90,7 +98,8 @@ function harness(stems, options={}) {
     ArrayBuffer,TextDecoder,setInterval:()=>1,clearInterval(){},setTimeout:()=>0};
   vm.runInNewContext(source,ctx,{timeout:5000,filename:'stem-ui.js'});
   const el=id=>{const e=nodes.get(id);assert(e,'Missing '+id);return e;};
-  return {ui:root.SunoStemUI,el,nodes,stems,downloaded,audios,workers};
+  return {ui:root.SunoStemUI,el,nodes,stems,downloaded,audios,workers,
+    releaseHeldExtract(){assert(releaseHeldExtract,'held extraction missing');releaseHeldExtract();}};
 }
 async function flush(){
   for(let i=0;i<7;i++)await new Promise(resolve=>setImmediate(resolve));
@@ -202,6 +211,23 @@ async function flush(){
   assert.match(p.el('stemStatus').textContent,/shorter than one audio sample/);
   assert.equal(p.el('stemExport').disabled,true,'zero-frame range cannot export');
   p.ui.close();
+
+  // Cancellation must also settle a pending ZIP extraction await. The
+  // browser/archive may finish the original operation later; stale data must
+  // not overwrite the new preview or prevent a fresh build.
+  const slow=harness([fakeStem('Slow archive',.2)],{holdFirstExtract:true});
+  await slow.ui.open({name:'Held archive.zip',size:1234});
+  slow.el('stemBuild').fire('click');await flush();
+  assert.equal(slow.audios.length,0,'first extraction has not completed');
+  slow.el('stemStop').fire('click');await flush();
+  assert.equal(slow.el('stemBuild').disabled,false,'cancel releases controls during extraction');
+  slow.el('stemBuild').fire('click');await flush();
+  assert.equal(slow.audios.length,1,'new build succeeds without waiting for old extraction');
+  slow.releaseHeldExtract();await flush();
+  assert.equal(slow.audios.length,1,'late extraction cannot publish another preview');
+  assert(Math.abs(slow.audios[0].getChannelData(0)[2]-.2)<1e-6,
+    'fresh mix retains correct audio after stale extraction resolves');
+  slow.ui.close();
 
   // Cancellation while a worker is pending must terminate the old job and
   // permit a clean rebuild. Its late messages must never publish stale audio.
