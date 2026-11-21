@@ -687,7 +687,7 @@
       if (startFrame>=sourceFrames || endFrame>sourceFrames || endFrame<=startFrame)
         throw new Error('Export selection is outside source duration.');
       writable=await handle.createWritable();
-      await root.SunoStemWavStream.write({rate:rate,startFrame:startFrame,endFrame:endFrame,
+      await root.SunoStemWavStream.write({rate:rate,startFrame:startFrame,endFrame:endFrame,codec:Wav,
         bits:bits,writable:writable,signal:controller.signal,chunkFrames:rate*10,
         getChunk:async function(pos,count) {
           if(controller.signal.aborted)throw new Error('Export cancelled.');
