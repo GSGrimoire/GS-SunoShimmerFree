@@ -106,7 +106,7 @@ function harness(stems, options={}) {
     confirm:()=>true};
   const URLs={createObjectURL:()=> 'blob:synthetic',revokeObjectURL(){}};
   const ctx={window:root,document,Worker,Blob,URL:URLs,console,Float32Array,Uint8Array,
-    ArrayBuffer,TextDecoder,setInterval:()=>1,clearInterval(){},setTimeout:()=>0};
+    ArrayBuffer,TextDecoder,AbortController,setInterval:()=>1,clearInterval(){},setTimeout:()=>0};
   vm.runInNewContext(source,ctx,{timeout:5000,filename:'stem-ui.js'});
   const el=id=>{const e=nodes.get(id);assert(e,'Missing '+id);return e;};
   return {ui:root.SunoStemUI,el,nodes,stems,downloaded,audios,workers,
