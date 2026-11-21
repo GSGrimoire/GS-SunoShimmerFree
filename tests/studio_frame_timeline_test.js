@@ -31,3 +31,16 @@ test('input mutations cannot change immutable timeline',()=>{
   assert.equal(mapTimelineWindow(t,{startFrame:0,frameCount:10})[0].frameCount,10);
   assert.ok(Object.isFrozen(t.tracks[0]));
 });
+test('large safe source coordinates map without intermediate rounding',()=>{
+  const M=Number.MAX_SAFE_INTEGER;
+  const t=createTimeline({sampleRate:48000,durationFrames:200,tracks:[{id:'a',startFrame:101,sourceStartFrame:M-2,frameCount:2,sourceFrames:M}]});
+  assert.deepEqual(mapTimelineWindow(t,{startFrame:102,frameCount:1})[0],{id:'a',silent:false,outputOffsetFrames:0,sourceStartFrame:M-1,frameCount:1});
+  assert.deepEqual(mapTimelineWindow(t,{startFrame:101,frameCount:2})[0],{id:'a',silent:false,outputOffsetFrames:0,sourceStartFrame:M-2,frameCount:2});
+});
+test('adjacent windows map contiguous source frames at safe integer boundary',()=>{
+  const M=Number.MAX_SAFE_INTEGER;
+  const t=createTimeline({sampleRate:48000,durationFrames:200,tracks:[{id:'a',startFrame:101,sourceStartFrame:M-3,frameCount:3,sourceFrames:M}]});
+  const spans=[101,102,103].map(startFrame=>mapTimelineWindow(t,{startFrame,frameCount:1})[0]);
+  assert.deepEqual(spans.map(s=>s.sourceStartFrame),[M-3,M-2,M-1]);
+  for(const s of spans) assert.ok(s.sourceStartFrame>=M-3 && s.sourceStartFrame+s.frameCount<=M);
+});
