@@ -378,7 +378,13 @@
     var data;
     if (stem.wav) {
       data = readWav(bytes);
-    } else if (clipEnd > clipStart && root.SunoStemMp3 && root.AudioDecoder && root.EncodedAudioChunk &&\n        (!targetRate || targetRate === sniffMp3Rate(bytes))) {\n      var decodeAbort = new AbortController();\n      data = await awaitSource(root.SunoStemMp3.decodePassage(bytes,clipStart,clipEnd,decodeAbort.signal),\n        gen,decodeAbort);\n    } else {\n      var rate = sniffMp3Rate(bytes);
+    } else if (clipEnd > clipStart && root.SunoStemMp3 && root.AudioDecoder && root.EncodedAudioChunk &&
+        (!targetRate || targetRate === sniffMp3Rate(bytes))) {
+      var decodeAbort = new AbortController();
+      data = await awaitSource(root.SunoStemMp3.decodePassage(bytes,clipStart,clipEnd,decodeAbort.signal),
+        gen,decodeAbort);
+    } else {
+      var rate = sniffMp3Rate(bytes);
       // decodeAudioData resamples to the AudioContext rate, which may differ
       // from the MP3's native header rate. Compare native rates separately.
       var ctx = audioContext(targetRate || rate || 48000);
