@@ -18,7 +18,7 @@ function fakeStem(name,level,sr=48000,seconds=1) {
     solo:false,volume:0,clean:false,polish:false,clarity:20,presence:20,dynamics:0,target:'off',
     _file:data};
 }
-function harness(stems) {
+function harness(stems, options={}) {
   const nodes=new Map(),downloaded=[],audios=[],workers=[];
   class E {
     constructor(tag='div') {
@@ -67,6 +67,7 @@ function harness(stems) {
     constructor(url){this.url=url;this.terminated=false;workers.push(this);}
     postMessage(m){
       if(this.url==='stem-audio-worker.js') {
+        if(options.holdStemWorker) { this.pending=m; return; }
         let channels=m.channels;
         if(m.clean)channels=Engine.process(channels,m.sampleRate,Engine.DEFAULTS).clean;
         if(m.polish)channels=Polish.process(channels,m.sampleRate,m.polishParams).channels;
@@ -132,6 +133,26 @@ async function flush(){
   h.el('stemBuild').fire('click');await flush();
   assert(h.workers.some(w=>w.url==='stem-audio-worker.js'),'stem polish worker was used');
   assert.equal(h.el('stemExport').disabled,false);
+
+  // Integration regression: a silent processing worker must not leave a suspended
+  // build alive after cancellation, and late results must not replace new audio.
+  const k=harness([fakeStem('Silent worker',.2)],{holdStemWorker:true});
+  await k.ui.open({name:'Worker test.zip',size:1234});
+  k.stems[0].clean=true;
+  k.el('stemBuild').fire('click');await flush();
+  const pending=k.workers.find(w=>w.url==='stem-audio-worker.js');
+  assert(pending && !pending.terminated,'worker is pending before cancellation');
+  k.el('stemStop').fire('click');await flush();
+  assert(pending.terminated,'cancel terminates the pending worker');
+  assert.equal(k.el('stemBuild').disabled,false,'cancel releases build controls');
+  k.stems[0].clean=false;
+  k.el('stemBuild').fire('click');await flush();
+  assert.equal(k.audios.length,1,'fresh build completes after cancellation');
+  pending.onmessage({data:{type:'done',channels:[samples(.9,48000,1),samples(.9,48000,1)]}});
+  await flush();
+  assert.equal(k.audios.length,1,'stale worker cannot publish a second preview');
+  assert(Math.abs(k.audios[0].getChannelData(0)[2]-.2)<1e-6,'new preview retains correct audio');
+  k.ui.close();
 
   // A different WAV sample rate is rejected before silent resampling.
   const j=harness([fakeStem('First',.2,48000,1),fakeStem('Other',.3,44100,1)]);
