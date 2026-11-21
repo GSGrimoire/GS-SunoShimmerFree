@@ -370,7 +370,7 @@
       if (gen !== generation) abort();
     });
   }
-  async function decodeStem(stem, gen, targetRate) {
+  async function decodeStem(stem, gen, targetRate, clipStart, clipEnd) {
     status('Unpacking and decoding: ' + stem.name + ' (' + stem.format + ')...');
     var extractAbort = new AbortController();
     var bytes = await awaitSource(current.extract(stem.entry, extractAbort.signal), gen, extractAbort);
@@ -378,8 +378,7 @@
     var data;
     if (stem.wav) {
       data = readWav(bytes);
-    } else {
-      var rate = sniffMp3Rate(bytes);
+    } else if (clipEnd > clipStart && root.SunoStemMp3 && root.AudioDecoder && root.EncodedAudioChunk &&\n        (!targetRate || targetRate === sniffMp3Rate(bytes))) {\n      var decodeAbort = new AbortController();\n      data = await awaitSource(root.SunoStemMp3.decodePassage(bytes,clipStart,clipEnd,decodeAbort.signal),\n        gen,decodeAbort);\n    } else {\n      var rate = sniffMp3Rate(bytes);
       // decodeAudioData resamples to the AudioContext rate, which may differ
       // from the MP3's native header rate. Compare native rates separately.
       var ctx = audioContext(targetRate || rate || 48000);
@@ -537,7 +536,7 @@
         ensureFresh(gen);
         var s=selected[i];
         status('Stem ' + (i+1) + ' of ' + selected.length + ': ' + s.name);
-        var data=await decodeStem(s,gen,rate || null);
+        var data=await decodeStem(s,gen,rate || null,clipStart,clipEnd);
         ensureFresh(gen);
         var decodedBytes=data.channels.reduce(function(total,ch){return total+ch.byteLength;},0);
         largestDecodedBytes=Math.max(largestDecodedBytes,decodedBytes);
@@ -550,7 +549,7 @@
             throw new Error('Source sample rates differ. Enable explicit mismatch handling or export individual stems.');
         }
         if (!rate) {
-          rate=data.sr; sourceFrames=data.channels[0].length;
+          rate=data.sr; sourceFrames=data.sourceFrames || data.channels[0].length;
           clipStartFrame=Math.round(clipStart*rate);
           var clipEndFrame=clipEnd===0 ? sourceFrames : Math.round(clipEnd*rate);
           if (clipStartFrame >= sourceFrames || clipEndFrame > sourceFrames)
@@ -565,7 +564,7 @@
               ' MiB. The 96 MiB preview limit was exceeded. Set a shorter preview end.');
           mix=[new Float32Array(frames),new Float32Array(frames)];
         } else {
-          var delta=data.channels[0].length-sourceFrames;
+          var delta=(data.sourceFrames || data.channels[0].length)-sourceFrames;
           if (delta) {
             var diff=delta/rate;
             mismatchMessages.push(s.name + ' differs by ' + diff.toFixed(4) + ' seconds.');
@@ -576,7 +575,7 @@
         }
         var edit = validatePassage(s);
         if (edit.reduction) {
-          var duration=data.channels[0].length/data.sr,
+          var duration=(data.sourceFrames || data.channels[0].length)/data.sr,
             previewFrom=clipStartFrame/rate, previewTo=(clipStartFrame+frames)/rate;
           if (edit.from >= duration) {
             passageWarnings.push(s.name + ': attenuation starts beyond the source duration and has no effect.');
@@ -586,7 +585,7 @@
             passageWarnings.push(s.name + ': attenuation extends beyond the available source and is truncated.');
           }
         }
-        data=clipDecoded(data,clipStartFrame,frames);
+        data=data.passageStartFrame === clipStartFrame ? data : clipDecoded(data,clipStartFrame,frames);
         data=await processed(s,data,gen);
         ensureFresh(gen);
         sumInto(mix,data,s,clipStartFrame);
