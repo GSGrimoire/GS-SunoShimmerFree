@@ -499,9 +499,10 @@
     }
     var from = Math.round(edit.from * data.sr) - clipStartFrame,
       to = Math.round(edit.to * data.sr) - clipStartFrame,
-      // Preserve continuous boundaries while reaching full reduction in short passages.
+      // Compress both fades symmetrically so a short mute can reach full depth.
       fadeFrames = Math.max(1, Math.min(Math.round(0.020 * data.sr),
         Math.floor((to - from) / 2)));
+    // A one-frame interval has no interior sample for continuous edge fades.
     if (to - from < 2)
       throw new Error(stem.name + ': passage attenuation requires at least two audio sample frames for continuous fades.');
     for (var j = 0; j < n; j++) {

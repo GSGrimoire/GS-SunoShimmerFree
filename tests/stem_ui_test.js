@@ -439,7 +439,10 @@ async function flush(){
     w.el('stemBuild').fire('click');await flush();
     assert.equal(w.el('stemExport').disabled,false,'explicit consent allows start-aligned padding');
     const preview=w.audios.at(-1).getChannelData(0);
+    assert.equal(preview.length,48000,'the reference sets the preview duration');
     assert(Math.abs(preview[0]-.5)<1e-6,'consent must preserve first-frame alignment');
+    assert(Math.abs(preview[47999-missingFrames]-.5)<1e-6,
+      'the shorter stem contributes through its last frame');
     assert(Math.abs(preview[48000-missingFrames]-.2)<1e-6,
       'shorter stem must be zero padded at end, not time shifted');
     w.ui.close();
