@@ -62,6 +62,15 @@ await (async()=>{
   }
   assert.equal(probes,0,'invalid frame boundaries must not probe browser codec');
   assert.equal(constructed,0,'invalid frame boundaries must not allocate decoder');
+  // Sequential decoding from frame zero is not a bounded-work seek.
+  // Refuse a late excerpt before codec probing or output allocation.
+  for (const [start,end] of [[462,474],[108,109],[1e6,1e6+1]]) {
+    await assert.rejects(root.SunoStemMp3.decodePassage(bytes,start,end),
+      /excessive sequential decode; late passages need indexed seeking/);
+  }
+  assert.equal(probes,0,'late passages must not probe browser codec');
+  assert.equal(constructed,0,'late passages must not construct decoder');
+  console.log('Late MP3 passages fail closed before sequential frame feeding.');
   console.log('Unsafe and sub-sample MP3 passage boundaries rejected before codec probing.');
 })();
 
