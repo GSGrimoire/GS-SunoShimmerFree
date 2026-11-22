@@ -285,6 +285,31 @@ async function flush(){
     w.ui.close();
   }
 
+  // A one-frame 100% mute has no interior sample on which a continuous
+  // fade can reach full depth. Reject it instead of silently doing nothing.
+  // Two frames are the minimum permitted interval under the existing policy.
+  for (const frames of [1,2]) {
+    const w=harness([fakeStem('Frame policy',.2,48000,1)]);
+    await w.ui.open({name:'Frame policy.zip',size:2000});
+    const from=9600;
+    w.stems[0].passageStart=from/48000;
+    w.stems[0].passageEnd=(from+frames)/48000;
+    w.stems[0].passageReduction=100;
+    w.el('stemBuild').fire('click');await flush();
+    if(frames===1) {
+      assert.match(w.el('stemStatus').textContent,/at least two audio sample frames/);
+      assert.equal(w.el('stemExport').disabled,true,'one-frame attenuation cannot export');
+      assert.equal(w.audios.length,0,'one-frame attenuation cannot publish preview');
+    } else {
+      assert.equal(w.el('stemExport').disabled,false,'two-frame attenuation is permitted');
+      const audio=w.audios.at(-1).getChannelData(0);
+      assert(Math.abs(audio[from]-.2)<1e-6,'two-frame start boundary unchanged');
+      assert(Math.abs(audio[from+1])<1e-6,'two-frame center reaches full mute');
+      assert(Math.abs(audio[from+2]-.2)<1e-6,'two-frame end boundary unchanged');
+    }
+    w.ui.close();
+  }
+
   // A different WAV sample rate is rejected before silent resampling.
   const j=harness([fakeStem('First',.2,48000,1),fakeStem('Other',.3,44100,1)]);
   await j.ui.open({name:'Mismatch.zip',size:2000});
