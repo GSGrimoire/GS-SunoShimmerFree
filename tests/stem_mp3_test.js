@@ -150,6 +150,21 @@ await (async()=>{
     assert.equal(out.channels[1][2303],-.125);
     assert.equal(FakeDecoder.instances.at(-1).flushes,1,'MP3 reservoir must not be reset every 16 frames');
     assert(FakeDecoder.instances.at(-1).closed,'decoder must close');
+    // Eight-minute synthetic source: seek must submit only a bounded late
+    // window, preserve absolute timestamps and return the requested samples.
+    const count=Math.ceil(480*44100/1152);
+    const long=new Uint8Array(count*frameSize);
+    for(let i=0;i<count;i++) long.set(one,i*frameSize);
+    const late=await root.SunoStemMp3.decodePassage(long,462,474);
+    assert.equal(late.channels[0].length,12*44100);
+    assert.equal(late.passageStartFrame,462*44100);
+    assert.equal(late.sourceFrames,count*1152);
+    assert.equal(late.channels[0][0],.25);
+    assert.equal(late.channels[1].at(-1),-.125);
+    const last=FakeDecoder.instances.at(-1);
+    assert(last.closed,'late indexed decoder closes');
+    assert(last.flushes===1,'late indexed decoder flushes only once');
+    assert(last.pending.length===0,'late decoder drains queued frames');
     for (const tag of ['Xing','Info']) {
       const tagged=bytes.slice();
       tagged.set(Buffer.from(tag),36); // MPEG-1 stereo: 4-byte header + 32-byte side information
