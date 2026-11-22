@@ -330,9 +330,10 @@
     });
   }
   function ensureFresh(gen) { if (gen !== generation) throw new Error('Cancelled.'); }
-  function readWav(bytes) {
-    var w = Wav.decodeWav(bytes);
-    return {channels: w.channels, sr: w.sampleRate, originalRate: w.sampleRate, kind:'WAV'};
+  function readWav(bytes, clipStart, clipEnd) {
+    var w = Wav.decodeWavPassage(bytes, clipStart, clipEnd, 96 * 1048576);
+    return {channels: w.channels, sr: w.sampleRate, originalRate: w.sampleRate, kind:'WAV',
+      passageStartFrame:w.passageStartFrame, sourceFrames:w.sourceFrames};
   }
   function sniffMp3Rate(bytes) {
     var a = new Uint8Array(bytes), start = 0;
@@ -389,7 +390,7 @@
     ensureFresh(gen);
     var data;
     if (stem.wav) {
-      data = readWav(bytes);
+      data = readWav(bytes,clipStart,clipEnd);
     } else if (clipEnd > clipStart && root.SunoStemMp3 && root.AudioDecoder && root.EncodedAudioChunk &&
         (!targetRate || targetRate === sniffMp3Rate(bytes) || $('stemAllowMismatch').checked)) {
       var decodeAbort = new AbortController();
