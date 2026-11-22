@@ -386,25 +386,6 @@
       // Native full-source decode allocates before its size can be checked.
       // Milestone A supports finite excerpts only, through bounded WebCodecs.
       throw new Error(stem.name + ': MP3 requires a finite selected passage and supported WebCodecs. Full-source or fallback decode is disabled to protect browser memory.');
-      /* Legacy full-source decode is intentionally unreachable pending bounded admission.
-      var rate = sniffMp3Rate(bytes);
-      // decodeAudioData resamples to the AudioContext rate, which may differ
-      // from the MP3's native header rate. Compare native rates separately.
-      var ctx = audioContext(targetRate || rate || 48000);
-      var decoded = await awaitSource(ctx.decodeAudioData(bytes), gen);
-      // Avoid duplicating a full-duration decoded AudioBuffer into another
-      // equally large set of Float32Arrays. This limit is a defensive guard,
-      // not a streaming decoder or a guarantee about browser decode memory.
-      var decodedBytes = decoded.length * decoded.numberOfChannels * 4;
-      if (!Number.isSafeInteger(decodedBytes) || decodedBytes > MAX_MIX_BYTES)
-        throw new Error(stem.name + ' decoded audio exceeds the 96 MiB per-stem workspace budget. ' +
-          'Use a shorter source or a future streaming import path.');
-      // Browser AudioBuffer channel views are read-only inputs to the mix.
-      // clipDecoded creates the short mutable passage before any worker runs.
-      // Avoid cloning the entire decoded source, which can be hundreds of MiB.
-      data = {channels: Array.from({length: decoded.numberOfChannels}, function(_, c) {
-        return decoded.getChannelData(c);
-        */
     }), sr: ctx.sampleRate, originalRate: rate, kind:'MP3'};
     }
     ensureFresh(gen);
