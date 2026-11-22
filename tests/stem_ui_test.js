@@ -241,6 +241,28 @@ async function flush(){
   assert.equal(q.downloaded.length,0,'stale cancelled MP3 job must not download');
   q.ui.close();
 
+  // Exact decoded-frame parity is required unless the user explicitly opts in.
+  // A one-frame difference and a 10 ms difference both previously slipped
+  // through the 25 ms tolerance and silently padded the shorter source.
+  for (const shorterFrames of [47999,47520]) {
+    const short=fakeStem('Short',.3,48000,shorterFrames/48000);
+    const m=harness([fakeStem('Reference',.2,48000,1),short]);
+    await m.ui.open({name:'Unequal lengths.zip',size:2000});
+    m.el('stemBuild').fire('click');await flush();
+    assert.match(m.el('stemStatus').textContent,/Stem lengths differ/);
+    assert.equal(m.el('stemExport').disabled,true,
+      'unchecked mismatch cannot export silently padded audio');
+    assert.equal(m.audios.length,0,'unchecked mismatch cannot publish preview');
+    m.el('stemAllowMismatch').checked=true;
+    m.el('stemBuild').fire('click');await flush();
+    assert.equal(m.el('stemExport').disabled,false,'explicit opt-in permits padding');
+    assert.equal(m.audios.at(-1).length,48000);
+    assert(Math.abs(m.audios.at(-1).getChannelData(0)[shorterFrames-1]-.5)<1e-6);
+    assert(Math.abs(m.audios.at(-1).getChannelData(0)[shorterFrames]-.2)<1e-6,
+      'opted-in shorter stem is zero padded without shifting the reference');
+    m.ui.close();
+  }
+
   // A different WAV sample rate is rejected before silent resampling.
   const j=harness([fakeStem('First',.2,48000,1),fakeStem('Other',.3,44100,1)]);
   await j.ui.open({name:'Mismatch.zip',size:2000});
