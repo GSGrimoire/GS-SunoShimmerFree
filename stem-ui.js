@@ -524,6 +524,25 @@
     });
     return {channels:clipped, sr:data.sr};
   }
+  function alignDecodedPassage(data, fromFrame, frames) {
+    // WebCodecs has already decoded a passage. Its origin is expressed in
+    // target-rate frames, and independent source/target rounding can differ
+    // by one frame. Never treat this buffer as full-source audio.
+    var origin = data.passageStartFrame;
+    if (!Number.isSafeInteger(origin) || origin < 0)
+      throw new Error('Decoded passage has an invalid frame origin.');
+    var offset = fromFrame - origin;
+    if (offset === 0 && data.channels.every(function(ch) { return ch.length === frames; }))
+      return data;
+    var channels = data.channels.map(function(ch) {
+      var out = new Float32Array(frames);
+      var srcFrom = Math.max(0, offset), dstFrom = Math.max(0, -offset);
+      var count = Math.min(ch.length - srcFrom, frames - dstFrom);
+      if (count > 0) out.set(ch.subarray(srcFrom, srcFrom + count), dstFrom);
+      return out;
+    });
+    return {channels:channels, sr:data.sr, sourceFrames:data.sourceFrames};
+  }
   function toBuffer(channels, sampleRate) {
     var c=audioContext(), out=c.createBuffer(channels.length,channels[0].length,sampleRate);
     channels.forEach(function(ch,index){out.copyToChannel(ch,index);});
@@ -603,7 +622,8 @@
             passageWarnings.push(s.name + ': attenuation extends beyond the available source and is truncated.');
           }
         }
-        data=data.passageStartFrame === clipStartFrame ? data : clipDecoded(data,clipStartFrame,frames);
+        data=data.passageStartFrame !== undefined ?
+          alignDecodedPassage(data,clipStartFrame,frames) : clipDecoded(data,clipStartFrame,frames);
         data=await processed(s,data,gen);
         ensureFresh(gen);
         sumInto(mix,data,s,clipStartFrame);
