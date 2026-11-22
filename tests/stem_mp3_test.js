@@ -115,7 +115,7 @@ await (async()=>{
   const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
   const mp3='<script src="stem-mp3.js"></script>';
   const resample='<script src="stem-resample.js"></script>';
-  assert(html.includes(mp3+String.fromCharCode(10)+resample),'script tags must be separated by an actual newline');
+  assert(html.includes(mp3+'\n'+resample) || html.includes(mp3+'\r\n'+resample),\n    'script tags must be separated by an actual LF or CRLF newline');
   assert(!html.includes(mp3+String.fromCharCode(92)+'n'+resample),'literal escaped newline is invalid');
   assert.equal(html.split(mp3).length-1,1);
   assert.equal(html.split(resample).length-1,1);
@@ -147,7 +147,7 @@ await (async()=>{
   // A hostile decoder must not force a full-duration plane allocation in a
   // small preview, regardless of its reported output frame count.
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-  class OversizedDecoder extends FakeDecoder {
+  const oversizedAudio={closed:false};\n  class OversizedDecoder extends FakeDecoder {
     async flush() {
       this.flushes++;
       this.callbacks.output({
@@ -156,7 +156,7 @@ await (async()=>{
         numberOfFrames:1152*33,
         timestamp:0,
         copyTo(){throw new Error('oversized copyTo must never be called');},
-        close(){this.audioClosed=true;}
+        close(){oversizedAudio.closed=true;}
       });
     }
   }
@@ -166,7 +166,7 @@ await (async()=>{
   await assert.rejects(root.SunoStemMp3.decodePassage(bytes,0,.1),
     /bounded callback budget/);
   const instance=OversizedDecoder.instances.at(-1);
-  assert(instance.audioClosed,'oversized AudioData must be closed');
+  assert(oversizedAudio.closed,'oversized AudioData must be closed');
   assert(instance.closed,'decoder must close after oversized output');
   console.log('Oversized decoded audio callback rejected before plane copy.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
