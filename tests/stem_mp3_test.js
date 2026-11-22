@@ -59,6 +59,15 @@ class FakeDecoder {
     }
     const protectedFrame=bytes.slice();protectedFrame[1]&=~1;
     await assert.rejects(root.SunoStemMp3.decodePassage(protectedFrame,0,.1),/CRC-protected/);
+    // A later CRC-protected frame must fail even if it falls after the
+    // requested preview: the complete source framing is scanned.
+    const laterProtected=bytes.slice();
+    laterProtected[20*frameSize+1]&=~1;
+    await assert.rejects(root.SunoStemMp3.decodePassage(laterProtected,0,.1),/CRC-protected/);
+    // Frame after the first, within the decoded window.
+    const secondProtected=bytes.slice();
+    secondProtected[frameSize+1]&=~1;
+    await assert.rejects(root.SunoStemMp3.decodePassage(secondProtected,0,.1),/CRC-protected/);
   }
   console.log('Synthetic decoder timestamp and single-flush tests passed; real WebCodecs remains unverified.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
