@@ -36,4 +36,57 @@ for(const [field,value] of [[22,0],[22,20],[34,12],[32,0],[24,0]]) {
   assert.throws(()=>Wav.decodeWavPassage(fixture(),0,1,100),/budget/);
   assert.throws(()=>Wav.decodeWavPassage(fixture(),.1,Infinity,1048576),/boundaries/);
 }
+
+{
+  // Declared RIFF boundary, not physical buffer length, governs all chunks.
+  const original=fixture(1);
+  for(const declared of [4, 36, original.byteLength, 0xFFFFFFFF]) {
+    const buf=original.slice(0),dv=new DataView(buf);
+    dv.setUint32(4,declared,true);
+    assert.throws(()=>Wav.decodeWavPassage(buf,0,.1,1048576),/RIFF|trailing|Truncated/);
+  }
+  const withSuffix=new Uint8Array(original.byteLength+4);
+  withSuffix.set(new Uint8Array(original));
+  assert.throws(()=>Wav.decodeWavPassage(withSuffix.buffer,0,.1,1048576),/trailing/);
+}
+{
+  // RIFF can physically contain a chunk whose declared data extends beyond
+  // the container; the physical bytes do not authorize the overrun.
+  const buf=fixture(1),dv=new DataView(buf);
+  dv.setUint32(4,36+4,true);
+  assert.throws(()=>Wav.decodeWavPassage(buf,0,.1,1048576),/trailing/);
+}
+{
+  // Valid odd-sized ancillary chunk with a padding byte before fmt.
+  const base=fixture(1),bytes=new Uint8Array(base.byteLength+10);
+  bytes.set(new Uint8Array(base,0,12),0);
+  bytes.set([74,85,78,75,1,0,0,0,42,0],12); // JUNK, one byte + pad
+  bytes.set(new Uint8Array(base,12),22);
+  const dv=new DataView(bytes.buffer);
+  dv.setUint32(4,bytes.byteLength-8,true);
+  assert.equal(Wav.decodeWavPassage(bytes.buffer,0,.1,1048576).channels[0].length,4800);
+  // Missing the odd pad at the end of a declared RIFF is invalid.
+  const malformed=new Uint8Array(21);
+  malformed.set([82,73,70,70,13,0,0,0,87,65,86,69,74,85,78,75,1,0,0,0,42]);
+  assert.throws(()=>Wav.decodeWavPassage(malformed.buffer,0,.1,1048576),/pad byte/);
+}
+{
+  // WAVE_FORMAT_EXTENSIBLE: check complete subtype GUID, not just its low word.
+  const base=fixture(1),bytes=new Uint8Array(base.byteLength+24);
+  bytes.set(new Uint8Array(base,0,12));
+  bytes.set(new Uint8Array(base,12,36),12);
+  bytes.set(new Uint8Array(base,36),60);
+  const dv=new DataView(bytes.buffer);
+  dv.setUint32(4,bytes.byteLength-8,true);
+  dv.setUint32(16,40,true);dv.setUint16(20,65534,true);
+  dv.setUint16(36,22,true);dv.setUint16(38,32,true);
+  dv.setUint32(44,3,true);
+  bytes.set([0,0,16,0,128,0,0,170,0,56,155,113],48);
+  assert.equal(Wav.decodeWavPassage(bytes.buffer,0,.1,1048576).channels[0].length,4800);
+  bytes[55]^=1;
+  assert.throws(()=>Wav.decodeWavPassage(bytes.buffer,0,.1,1048576),/GUID/);
+  bytes[55]^=1;dv.setUint32(44,0x10003,true);
+  assert.throws(()=>Wav.decodeWavPassage(bytes.buffer,0,.1,1048576),/GUID/);
+}
+
 console.log('Bounded WAV passage parity, late-window memory and hostile-header tests passed.');
