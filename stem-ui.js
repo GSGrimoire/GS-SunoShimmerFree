@@ -433,10 +433,14 @@
     }
     var from = Math.round(edit.from * data.sr) - clipStartFrame,
       to = Math.round(edit.to * data.sr) - clipStartFrame,
+      // A one-frame interval has no interior sample for continuous edge fades.
+      // Reject it instead of silently applying zero attenuation.
       // Compress both fades symmetrically for short passages so 100% mute
       // reaches full depth at the midpoint, without a boundary step.
       fadeFrames = Math.max(1, Math.min(Math.round(0.020 * data.sr),
         Math.floor((to - from) / 2)));
+    if (to - from < 2)
+      throw new Error(stem.name + ': passage attenuation requires at least two audio sample frames for continuous fades.');
     for (var j = 0; j < n; j++) {
       // A 20 ms fade on both boundaries, anchored in the original timeline.
       var depth = (j > from && j < to) ?
