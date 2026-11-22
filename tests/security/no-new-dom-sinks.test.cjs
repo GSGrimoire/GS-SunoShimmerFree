@@ -23,7 +23,7 @@ function violations(source, file = 'synthetic.js') {
     if (existing) seen.add(site);
     // Deliberately line-oriented: a drift alert, not a complete sink search.
     // Exclude comparisons from the single-line assignment heuristic.
-    if (/\.(?:innerHTML|outerHTML)\s*=(?!=)|\.insertAdjacentHTML\s*\(/.test(line) &&
+    if (/\.(?:innerHTML|outerHTML)\s*=(?!=|>)|\.insertAdjacentHTML\s*\(/.test(line) &&
         !existing) findings.push({line: i + 1, kind: 'html-sink'});
     if (/\bdocument\s*\.\s*(?:write|writeln)\s*\(|\b(?:eval|Function)\s*\(|\bnew\s+Function\s*\(/.test(line))
       findings.push({line: i + 1, kind: 'code-execution'});
