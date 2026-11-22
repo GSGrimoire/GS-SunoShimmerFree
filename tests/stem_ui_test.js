@@ -359,6 +359,28 @@ async function flush(){
     w.ui.close();
   }
 
+  // Any decoded frame discrepancy requires explicit opt-in, even below 25 ms.
+  // Rejection must not publish a preview or enable export.
+  for (const missingFrames of [1,480]) {
+    const first=fakeStem('Aligned',.2,48000,1);
+    const shorter=fakeStem('Shorter',.3,48000,(48000-missingFrames)/48000);
+    const w=harness([first,shorter]);
+    await w.ui.open({name:'Frame mismatch.zip',size:2000});
+    w.el('stemBuild').fire('click');await flush();
+    assert.match(w.el('stemStatus').textContent,/Stem lengths differ|mismatch checkbox/i,
+      'unchecked '+missingFrames+'-frame discrepancy must be rejected');
+    assert.equal(w.el('stemExport').disabled,true,'mismatch cannot export without consent');
+    assert.equal(w.audios.length,0,'mismatch cannot publish preview without consent');
+    w.el('stemAllowMismatch').checked=true;
+    w.el('stemBuild').fire('click');await flush();
+    assert.equal(w.el('stemExport').disabled,false,'explicit consent allows start-aligned padding');
+    const preview=w.audios.at(-1).getChannelData(0);
+    assert(Math.abs(preview[0]-.5)<1e-6,'consent must preserve first-frame alignment');
+    assert(Math.abs(preview[48000-missingFrames]-.2)<1e-6,
+      'shorter stem must be zero padded at end, not time shifted');
+    w.ui.close();
+  }
+
   // A different WAV sample rate is rejected before silent resampling.
   const j=harness([fakeStem('First',.2,48000,1),fakeStem('Other',.3,44100,1)]);
   await j.ui.open({name:'Mismatch.zip',size:2000});
