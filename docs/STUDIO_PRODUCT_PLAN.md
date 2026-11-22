@@ -2,8 +2,7 @@
 
 **Owner directive:** 20 November 2026. **Plan status:** proposed specification, not a feature/release claim.  
 **North star:** a full local-first automated music studio with inspectable, reversible, human-controllable processing.  
-**Target:** candidate for Monday morning, **23 November 2026, Europe/Copenhagen**, with shipping conditioned on real verification.  
-**Tracking:** [Studio initiative #18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18), [existing tool roadmap #2](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/2), [Viking stem repair #16](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/16).  
+**Delivery:** capability-gated, no fixed release date. Milestone A is the excerpt-only manual preview described below.\n**Tracking:** [Studio initiative #18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18), [existing tool roadmap #2](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/2), [Viking stem repair #16](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/16).  
 **Agent operating contract:** [SSF_AGENT_GATE.md](SSF_AGENT_GATE.md).
 
 ## 1. Product definition and experience
@@ -95,39 +94,21 @@ The project stores intent separately from any cached floating-point audio. Undo/
 - A portable, schema-validated JSON recipe plus media re-link (file digest check) is a first persistence step; consider local browser storage only after quota/retention/privacy review.
 - Do not silently persist entire audio in remote systems. Public example-files are test fixtures, not permission to upload user projects.
 
-## 4. Incremental delivery map
+## 4. Capability-gated milestones
 
-| Milestone | Sequenced work | Definition of done |
-| --- | --- | --- |
-| **S0: stabilize baseline and trust** | Inventory draft PR dependencies, read actual source, run relevant suites, get **independent review of #17** and any required predecessor; check deployed vs preview separation | No contradictory branch claims; pinned findings and pass/fail; defects logged with owner; production remains stable |
-| **S1: project and timeline kernel** | Versioned manifest; source/track IDs; precise timeline regions; immutable operations; deterministic undo/redo | Synthetic stereo alignment, bypass identity, split/trim/fade invariants, version compatibility tests |
-| **S2: multitrack memory-safe engine** | Segmented decode, bounded cache and worker jobs; frame-aligned processing and mixing; streaming or bounded export path | Eight-minute Viking 10-stem import and long-form mix without memory exhaustion in documented target browsers; graceful unsupported browser fallback |
-| **S3: automated quality assistant** | Bounded diagnostics, conservative per-stem and passage recommendations, explainable one-click preview and undo | Clean source bypass, synthetic corrupted sources, confidence calibration and no unauthorized destructive change |
-| **S4: studio editing experience** | Synchronized multitrack timeline, regions, multiple fades, per-track effects, audition and undo | Real-browser import/play/edit/export across track replacement, crossfades and effects; accessibility checks |
-| **S5: master and reopen** | Master bus, measured loudness/headroom, export options, recipe save/relink | Pixel-independent audio reproducibility checks, target loudness honest, deterministic project reopen |
-| **S6: harder studio tools** | Pan/buses, richer effects, batch workflows, reference mastering, arrangement/tempo tools, user-designed presets | Feature-level contracts and fresh review; do not couple to first release |
+**Milestone A: manual excerpt-only Multi-Stem Preview (current owner priority).** Import supported local Suno stem ZIP safely; show stem list, selection, sync assumptions, browser/input limitations and fail-closed errors. Select a bounded excerpt and audition synchronized reconstruction. Adjust manual per-stem gain, mute/solo and reversible time-local attenuation with continuous fades, including short 100% mute intervals. Export **only the selected passage** as **32-bit floating-point WAV**, matching preview. Keep unclamped float mixing until output and report samples above full scale. Basic **excerpt-only** clipping/level diagnostics are optional and must not block A.
 
-S0–S5 constitute the **full studio end-to-end target**. They are deliverables, not an assertion they can all be finished in one weekend. S6 is breadth beyond the first complete version.
+A's acceptance includes synthetic hostile ZIP, alignment/click/fade, cancellation, stale worker, memory and preview/export parity tests; measured browser peak memory for the eight-minute, ten-stem Viking source; runtime codec capability detection; consistent MP3 decode alignment or explicit proven delay/padding normalization; no unexpected post-load network requests; independent Full integration review; and named operator/owner level-matched listening at 462–474 seconds. A may fail safely on unsupported browsers or oversized inputs with honest documented limits. **Capping output allocations alone does not prove bounded native decode memory.**
 
-## 5. Monday candidate: prioritize a vertical slice, not a demo façade
+**Deferred beyond A:** per-stem Polish and selective cleaning, automatic recommendations/repair, long-form streaming WAV/MP3, mastering, full project persistence and standalone studio kernels. Preserve current single-track production.
 
-**Internal morning checkpoint:** Monday, 23 November 2026, Copenhagen local time. An exact publication hour has not been specified.
+**Later capability milestones:** B, canonical immutable project/operation contract and undoable timeline; subsequent milestones add automatic conservative analysis, richer manual arrangement, bounded long-form mixing, mastering, reopening and export. These are future requirements, not claims of implemented features.
 
-### Priority order between now and the checkpoint
+**Integration and ordering:** [#18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18) is the live priority and claim hub. Correct #19 documentation first; repair current #42 fade/mute behavior and verify #17 supersession; reconcile #47 with the current #46 head, then review the actual integrated line. #11 inherits #3 → #6 → #8 despite disabling Polish in A. #40 diagnostics and #48 full-song export are deferred. Do not blindly merge inherited stacks. No new coder PR while two or more coder PRs await review; freeze new `studio-*` kernels until A ships.
 
-1. **Review current risky draft chain**, starting with #17 independently, and avoid broad speculative rewriting. Determine the minimum safe branch integration path.
-2. **Working studio vertical slice:** local source import → analyze → preview a recommended safe setting → multitrack selection/edit → mix → export, with original preserved. Surface which subfeatures remain manual.
-3. **Length and memory:** make the Viking eight-minute recording a hard acceptance case, or label preview-only excerpt support accurately and keep full-studio launch blocked.
-4. **Actual-browser and listening:** confirm no wrong-source export, timing shifts, click at passage boundaries, song-element loss or runaway memory. Compare late Other, Synth and Percussion against baseline and conservative selected-stem cleaning.
-5. **Only after those gates:** independent pinned-head approval, explicit merge authorization under repository rules, deployment to a separate preview, and real deployment smoke test. Do not equate GitHub Actions success with audible repair.
+## 5. Release and browser acceptance gates
 
-### Decision at the deadline
-
-- **Full studio release:** only if S0–S5 and the release gates are actually satisfied.
-- **Studio Preview / Alpha:** if a smaller complete usable workflow passes its own criteria but full-studio requirements remain open. Clearly label missing capabilities, keep existing production tool stable, and do not represent it as the full product.
-- **Hold:** if long-track memory, source integrity, security, clip/export correctness or independent review is unresolved.
-
-A fixed date cannot substitute for audio listening or independent source review. The user owns subjective musical acceptance and any explicit holds.
+There is **no fixed release deadline**. Source tests and GitHub checks are necessary but insufficient. A named browser-capable reviewer/session, or **owner Gus as fallback**, must execute and record real-browser memory, cancellation, no-unexpected-network, sample alignment, excerpt playback and 32-bit float WAV parity, plus level-matched listening. Require independent Full source review on the actual integration tip and explicit authorization before any merge or deployment. If any gate is missing, label the preview unreleased. No GitHub-only agent can certify a browser or listening gate.
 
 ## 6. Test matrix
 
@@ -155,6 +136,6 @@ Measurements and screenshots must be attached to an issue or documentation in Gi
 - **ChatGPT-2, Independent Reviewer:** different session, reads actual code and evaluates risks/defects. Reviewer does not repair its own reviewed code.
 - **Human owner:** final musical listening judgment, architecture decisions that materially change product scope, and explicit release holds. Do not create unnecessary owner-only tasks if existing issues cover the work.
 - **Release gate operator:** only after review, merge ordering and user acceptance; do not assume role labels imply distinct GitHub identities.
-- **Source of truth:** this plan, issue #18, [SSF_AGENT_GATE.md](SSF_AGENT_GATE.md), the currently open PR graph and their pinned handoffs. For the experimental repair, consult #16 and PR #17.
+- **Source of truth:** this plan, issue #18, [SSF_AGENT_GATE.md](SSF_AGENT_GATE.md), the currently open PR graph and their pinned handoffs. For experimental repair, consult #16 and the current #42 line; confirm #17 supersession before closing it.
 
-**Start the next session with:** #18 → this plan → agent gate → PR graph → a single claimed priority. The first priority is independently reviewing PR #17, not adding a seventh untested audio effect.
+**Start the next session with:** #18 → this plan → agent gate → PR graph → a single claimed priority. The first priority is correcting planning PR #19, followed by the current #42/#47 integration line under issue #18.
