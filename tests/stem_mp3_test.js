@@ -6,6 +6,27 @@ function frame() {
   const f=new Uint8Array(frameSize);f.set([255,251,144,0]);return f;
 }
 const one=frame();
+// ID3v2 metadata must never be interpreted as frame data or permit an
+// out-of-bounds start. A valid synchsafe tag may precede MP3 frames.
+const id3=(version,flags,size)=>Uint8Array.from([73,68,51,version,0,flags,
+  (size>>>21)&127,(size>>>14)&127,(size>>>7)&127,size&127]);
+const taggedValid=new Uint8Array(10+one.length);
+taggedValid.set(id3(4,0,0));taggedValid.set(one,10);
+assert.equal(Decoder.startOfFrames(taggedValid),10);
+const taggedFooter=new Uint8Array(20+one.length);
+taggedFooter.set(id3(4,16,0));taggedFooter.set(one,20);
+assert.equal(Decoder.startOfFrames(taggedFooter),20);
+for (const invalid of [
+  Uint8Array.from([73,68,51]),
+  id3(4,0,128),
+  id3(4,0,0).map((x,i)=>i===6?128:x),
+  id3(3,16,0),
+  id3(4,1,0),
+  id3(1,0,0),
+  id3(4,0,500)
+]) {
+  assert.throws(()=>Decoder.startOfFrames(invalid),/ID3v2/);
+}
 assert.equal(Decoder.header(one,0).rate,44100);
 assert.equal(Decoder.header(one,0).size,frameSize);
 assert.equal(Decoder.header(one,0).channels,2);
