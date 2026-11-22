@@ -140,3 +140,31 @@ class FakeDecoder {
   assert.equal(instance.flushes,1,'test must reach pending flush');
   console.log('Never-settling WebCodecs flush cancellation regression passed.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+(async()=>{
+  // A hostile decoder must not force a full-duration plane allocation in a
+  // small preview, regardless of its reported output frame count.
+  const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+  class OversizedDecoder extends FakeDecoder {
+    async flush() {
+      this.flushes++;
+      this.callbacks.output({
+        sampleRate:this.config.sampleRate,
+        numberOfChannels:this.config.numberOfChannels,
+        numberOfFrames:1152*33,
+        timestamp:0,
+        copyTo(){throw new Error('oversized copyTo must never be called');},
+        close(){this.audioClosed=true;}
+      });
+    }
+  }
+  const root={AudioDecoder:OversizedDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:root,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
+  await assert.rejects(root.SunoStemMp3.decodePassage(bytes,0,.1),
+    /bounded callback budget/);
+  const instance=OversizedDecoder.instances.at(-1);
+  assert(instance.audioClosed,'oversized AudioData must be closed');
+  assert(instance.closed,'decoder must close after oversized output');
+  console.log('Oversized decoded audio callback rejected before plane copy.');
+})().catch(e=>{console.error(e);process.exitCode=1;});
