@@ -1,3 +1,4 @@
+(async()=>{
 'use strict';
 const assert=require('node:assert/strict');
 const Decoder=require('../stem-mp3.js');
@@ -32,7 +33,7 @@ assert.equal(Decoder.header(one,0).size,frameSize);
 assert.equal(Decoder.header(one,0).channels,2);
 const frames=Array.from({length:40},frame), bytes=new Uint8Array(frameSize*frames.length);
 frames.forEach((f,i)=>bytes.set(f,i*frameSize));
-(async()=>{
+await (async()=>{
   await assert.rejects(Decoder.decodePassage(bytes,0,0.2),/WebCodecs/);
   await assert.rejects(Decoder.decodePassage(bytes,0,200),/WebCodecs/);
   assert.equal(Decoder.header(new Uint8Array([0,0,0,0]),0),null);
@@ -60,7 +61,7 @@ class FakeDecoder {
   }
   close(){this.closed=true;}
 }
-(async()=>{
+await (async()=>{
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
   const root={AudioDecoder:FakeDecoder,EncodedAudioChunk:FakeChunk};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
@@ -120,7 +121,7 @@ class FakeDecoder {
   assert.equal(html.split(resample).length-1,1);
 }
 
-(async()=>{
+await (async()=>{
   // Closing a decoder must settle a build even if flush() never resolves.
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
   class NeverFlushDecoder extends FakeDecoder {
@@ -142,7 +143,7 @@ class FakeDecoder {
   console.log('Never-settling WebCodecs flush cancellation regression passed.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
-(async()=>{
+await (async()=>{
   // A hostile decoder must not force a full-duration plane allocation in a
   // small preview, regardless of its reported output frame count.
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
@@ -170,7 +171,7 @@ class FakeDecoder {
   console.log('Oversized decoded audio callback rejected before plane copy.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
-(async()=>{
+await (async()=>{
   // A browser exposing AudioDecoder without MP3 support must fail closed.
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
   const load=(decoder)=>{
@@ -198,3 +199,5 @@ class FakeDecoder {
   assert.equal(ok.channels[0].length,Math.round(.1*44100));
   console.log('WebCodecs runtime codec support probe regressions passed.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+})().catch(err=>{console.error(err);process.exitCode=1;});
