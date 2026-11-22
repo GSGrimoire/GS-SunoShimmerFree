@@ -33,6 +33,34 @@ assert.equal(Decoder.header(one,0).size,frameSize);
 assert.equal(Decoder.header(one,0).channels,2);
 const frames=Array.from({length:40},frame), bytes=new Uint8Array(frameSize*frames.length);
 frames.forEach((f,i)=>bytes.set(f,i*frameSize));
+// Frame index must validate reservoir backward references before any seek
+// can be considered. Synthetic frames have empty reservoir dependencies.
+{
+  const indexed=await Decoder.indexFrames(bytes);
+  assert.equal(indexed.frames.length,40);
+  assert.equal(indexed.sourceFrames,40*1152);
+  assert.equal(indexed.frames[1].offset,frameSize);
+  assert.equal(indexed.frames[1].sampleStart,1152);
+  const invalid=bytes.slice();
+  invalid[4]=1; // first frame claims a 2-byte backward dependency
+  await assert.rejects(Decoder.indexFrames(invalid),/unavailable bit-reservoir/);
+  const later=bytes.slice();
+  later[frameSize+4]=255;
+  later[frameSize+5]=128; // 511-byte reference exceeds one prior payload
+  await assert.rejects(Decoder.indexFrames(later),/unavailable bit-reservoir/);
+  const aborted=new AbortController();
+  aborted.abort();
+  await assert.rejects(Decoder.indexFrames(bytes,aborted.signal),/indexing cancelled/);
+  const many=new Uint8Array(frameSize*12000);
+  for(let i=0;i<12000;i++) many.set(one,i*frameSize);
+  const controller=new AbortController();
+  let fired=false;
+  const pending=Decoder.indexFrames(many,controller.signal);
+  setTimeout(()=>{fired=true;controller.abort();},0);
+  await assert.rejects(pending,/indexing cancelled/);
+  assert(fired,'index scan must yield to scheduled cancellation');
+  console.log('Bounded MP3 frame index, reservoir and cancellation tests passed.');
+}
 await (async()=>{
   await assert.rejects(Decoder.decodePassage(bytes,0,0.2),/WebCodecs/);
   await assert.rejects(Decoder.decodePassage(bytes,0,200),/WebCodecs/);
