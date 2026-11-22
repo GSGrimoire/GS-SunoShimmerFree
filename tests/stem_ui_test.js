@@ -154,6 +154,16 @@ async function flush(){
   await mixedFormatFailClosedRegression();
   const h=harness([fakeStem('Lead Vocals',.2),fakeStem('Drums',.3)]);
   await h.ui.open({name:'Synthetic Stems.zip',size:1234});
+  assert.match(h.el('stemWorkspace')._innerHTML,/milestone A: 32-bit float WAV passage/,
+    'the reviewed passage-export format must be identified explicitly');
+  assert.match(h.el('stemWorkspace')._innerHTML,/entire compressed ZIP entry may be materialized/,
+    'interface must disclose compressed entry memory exposure');
+  assert.match(h.el('stemWorkspace')._innerHTML,/Native decoder memory is not measured/,
+    'interface must not imply native decoder peak memory is bounded');
+  assert.match(h.el('stemWorkspace')._innerHTML,/late passages beyond the sequential decode limit are rejected/,
+    'interface must disclose late MP3 passage limitation');
+  assert.doesNotMatch(h.el('stemWorkspace')._innerHTML,/MP3s are still decoded in full/,
+    'interface must not retain obsolete full-source decoding claim');
   assert.equal(h.el('stemList').children.length,2,'two stem cards');
   assert.match(h.el('stemArchive').textContent,/2 distinct stems/);
   assert.match(h.el('stemStatus').textContent,/Archive inspected/);
