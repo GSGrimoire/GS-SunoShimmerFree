@@ -6,7 +6,6 @@
   var Zip = root.SunoStemZip, Wav = root.WavCodec, Engine = root.ShimmerEngine,
     Resample = root.SunoStemResample;
   var MAX_MIX_BYTES = 96 * 1024 * 1024;
-  var LENGTH_TOLERANCE_SECONDS = 0.025;
   var current = null, generation = 0, worker = null;
   var context = null, buffer = null, source = null, startedAt = 0, position = 0, playing = false;
   var audioLabel = '', busy = false, timer = 0, objectUrl = null, pendingProcessAbort = null, pendingSourceAbort = null;
@@ -578,7 +577,7 @@
           if (delta) {
             var diff=delta/rate;
             mismatchMessages.push(s.name + ' differs by ' + diff.toFixed(4) + ' seconds.');
-            if (Math.abs(diff)>LENGTH_TOLERANCE_SECONDS && !$('stemAllowMismatch').checked)
+            if (!$('stemAllowMismatch').checked)
               throw new Error('Stem lengths differ: ' + mismatchMessages.join(' ') +
                 ' Select the mismatch checkbox to permit start-aligned trimming/padding.');
           }
