@@ -148,7 +148,8 @@ await (async()=>{
   // A hostile decoder must not force a full-duration plane allocation in a
   // small preview, regardless of its reported output frame count.
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-  const oversizedAudio={closed:false};\n  class OversizedDecoder extends FakeDecoder {
+  const oversizedAudio={closed:false};
+  class OversizedDecoder extends FakeDecoder {
     async flush() {
       this.flushes++;
       this.callbacks.output({
