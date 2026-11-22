@@ -83,14 +83,12 @@
     return {rate:first.rate,channels:first.channels,frames:entries,
       sourceFrames:entries.length*1152};
   }
-  // Plan an indexed seek. Output frame n of an MPEG-1 Layer III decoder
-  // depends on frame n's main data and on frame n-1 (IMDCT overlap and
-  // synthesis filterbank state). Frame n-1 is only decoded correctly when all
-  // of its bit-reservoir bytes (main_data_begin reaches back up to 511 bytes,
-  // up to about nine frames at 32 kbit/s) were fed. So feeding starts early
-  // enough to cover the reservoir of the frame before the first kept frame,
-  // plus a safety margin. Pre-roll output is decoded and discarded.
-  var SEEK_MARGIN_FRAMES=2, GUARD_FRAMES=2;
+  // Plan an indexed seek from the earliest reservoir dependency of the
+  // decoder state frame AND every kept/guard frame. Checking only keep-1
+  // misses a large backward reference on the first audible frame.
+  // Additional two-frame warm-up covers synthesis overlap; it does not
+  // replace dependency validation. The decode admission cap fails closed.
+  var SEEK_MARGIN_FRAMES=2, GUARD_FRAMES=2, MAX_SEEK_FEED_FRAMES=4096;
   function planSeek(index, startFrame, endFrame) {
     var frames=index.frames;
     if (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame) ||
@@ -99,13 +97,25 @@
     if (endFrame>index.sourceFrames)
       throw new Error('Requested MP3 passage exceeds source duration.');
     var keep=Math.floor(startFrame/1152), state=Math.max(0,keep-1);
-    var feed=state, back=frames[state].mainDataBegin;
-    while (back>0) {
-      if (feed===0) throw new Error('MP3 frame references unavailable bit-reservoir bytes.');
-      feed--; back-=frames[feed].payload;
-    }
-    feed=Math.max(0,feed-SEEK_MARGIN_FRAMES);
     var last=Math.min(frames.length-1,Math.floor((endFrame-1)/1152)+GUARD_FRAMES);
+    var earliest=state;
+    for (var n=state;n<=last;n++) {
+      var back=frames[n].mainDataBegin, cursor=n;
+      if (!Number.isSafeInteger(back) || back<0)
+        throw new Error('Invalid MP3 reservoir dependency.');
+      while (back>0) {
+        if (cursor===0) throw new Error('MP3 frame references unavailable bit-reservoir bytes.');
+        cursor--;
+        var payload=frames[cursor].payload;
+        if (!Number.isSafeInteger(payload) || payload<=0)
+          throw new Error('Invalid MP3 reservoir payload.');
+        back-=payload;
+      }
+      if (cursor<earliest) earliest=cursor;
+    }
+    var feed=Math.max(0,earliest-SEEK_MARGIN_FRAMES);
+    if (last-feed+1>MAX_SEEK_FEED_FRAMES)
+      throw new Error('MP3 indexed passage exceeds the bounded decode budget.');
     return {feedStart:feed,keepFrame:keep,lastFrame:last,preRollFrames:keep-feed};
   }
   async function decodePassage(input, startSeconds, endSeconds, signal) {
