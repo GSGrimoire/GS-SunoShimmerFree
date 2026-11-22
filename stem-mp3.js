@@ -55,6 +55,16 @@
     if (!Number.isSafeInteger(totalBytes) || totalBytes>96*1048576)
       throw new Error('MP3 passage exceeds the 96 MiB decoded output budget.');
     var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
+    // Browser implementations differ. A constructor existing does not prove
+    // MPEG-1 Layer III support; reject unsupported configurations before
+    // allocating output planes or feeding compressed user media.
+    if (typeof root.AudioDecoder.isConfigSupported !== 'function')
+      throw new Error('Browser cannot verify WebCodecs MP3 decoder support.');
+    var config={codec:'mp3',sampleRate:first.rate,numberOfChannels:first.channels};
+    var support=await root.AudioDecoder.isConfigSupported(config);
+    if (!support || support.supported !== true)
+      throw new Error('Browser WebCodecs MP3 decoder configuration is unsupported.');
+    if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
     var decoder, failure=null, frameNumber=0, count=0;
     var decodedFrames=0, observedFrames=0, lastEnd=0;
     function active() { if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.'); }
@@ -94,7 +104,7 @@
     var abort=function(){try{decoder.close();}catch(_){}};
     if (signal) signal.addEventListener('abort',abort,{once:true});
     try {
-      decoder.configure({codec:'mp3',sampleRate:first.rate,numberOfChannels:first.channels});
+      decoder.configure(config);
       while (offset<bytes.length) {
         active();
         // ID3v1 metadata is a 128-byte trailer, not an MP3 frame.
