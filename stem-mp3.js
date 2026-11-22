@@ -30,6 +30,49 @@
     }
     return 0;
   }
+  // Index every MPEG-1 Layer III frame without decoding audio. The two-byte
+  // side-information field records main_data_begin, a backward dependency in
+  // bytes. Indexing is cooperative and does not imply a safe decoder seek.
+  async function indexFrames(input, signal) {
+    var bytes=input instanceof Uint8Array?input:new Uint8Array(input);
+    if (bytes.byteLength>64*1048576)
+      throw new Error('MP3 compressed source exceeds the 64 MiB scan budget.');
+    var offset=startOfFrames(bytes), first=header(bytes,offset);
+    if (!first) throw new Error('Unsupported MP3 framing: MPEG-1 Layer III is required.');
+    var entries=[], maxFrames=131072;
+    while(offset<bytes.length) {
+      if (signal && signal.aborted) throw new Error('MP3 indexing cancelled.');
+      if(entries.length>=maxFrames) throw new Error('MP3 source exceeds the bounded frame-scan budget.');
+      if(entries.length && entries.length%256===0) {
+        await new Promise(function(resolve){setTimeout(resolve,0);});
+        if (signal && signal.aborted) throw new Error('MP3 indexing cancelled.');
+      }
+      if(offset+128===bytes.length && bytes[offset]===84 &&
+         bytes[offset+1]===65 && bytes[offset+2]===71) break;
+      var h=header(bytes,offset);
+      if(!h || h.rate!==first.rate || h.channels!==first.channels ||
+         offset+h.size>bytes.length)
+        throw new Error('Invalid or changing MP3 frame sequence.');
+      if(!(bytes[offset+1]&1))
+        throw new Error('CRC-protected MP3 frames are not supported for indexed preview.');
+      var side=h.channels===1?17:32;
+      if(h.size<4+side) throw new Error('Truncated MP3 side information.');
+      var back=(bytes[offset+4]<<1)|(bytes[offset+5]>>7);
+      var payload=h.size-4-side;
+      // Reservoir data cannot refer to bytes preceding the start of audio.
+      var available=0;
+      for(var j=entries.length-1;j>=0 && available<back;j--)
+        available+=entries[j].payload;
+      if(back>available)
+        throw new Error('MP3 frame references unavailable bit-reservoir bytes.');
+      entries.push({offset:offset,size:h.size,mainDataBegin:back,payload:payload,
+        sampleStart:entries.length*1152});
+      offset+=h.size;
+    }
+    if(!entries.length) throw new Error('Empty MP3 frame index.');
+    return {rate:first.rate,channels:first.channels,frames:entries,
+      sourceFrames:entries.length*1152};
+  }
   async function decodePassage(input, startSeconds, endSeconds, signal) {
     if (!root.AudioDecoder || !root.EncodedAudioChunk)
       throw new Error('Bounded MP3 preview requires browser WebCodecs AudioDecoder support.');
@@ -195,7 +238,7 @@
       try {decoder.close();}catch(_){}
     }
   }
-  var api={decodePassage:decodePassage,header:header,startOfFrames:startOfFrames};
+  var api={decodePassage:decodePassage,indexFrames:indexFrames,header:header,startOfFrames:startOfFrames};
   if (typeof module!=='undefined' && module.exports) module.exports=api;
   else root.SunoStemMp3=api;
 })(typeof self!=='undefined'?self:this);
