@@ -6,7 +6,6 @@
   var Zip = root.SunoStemZip, Wav = root.WavCodec, Engine = root.ShimmerEngine,
     Resample = root.SunoStemResample;
   var MAX_MIX_BYTES = 96 * 1024 * 1024;
-  var LENGTH_TOLERANCE_SECONDS = 0.025;
   var current = null, generation = 0, worker = null;
   var context = null, buffer = null, source = null, startedAt = 0, position = 0, playing = false;
   var audioLabel = '', busy = false, timer = 0, objectUrl = null, pendingProcessAbort = null, pendingSourceAbort = null;
@@ -473,7 +472,14 @@
     }
     var from = Math.round(edit.from * data.sr) - clipStartFrame,
       to = Math.round(edit.to * data.sr) - clipStartFrame,
-      fadeFrames = Math.max(1, Math.round(0.020 * data.sr));
+      // A one-frame interval has no interior sample for continuous edge fades.
+      // Reject it instead of silently applying zero attenuation.
+      // Compress both fades symmetrically for short passages so 100% mute
+      // reaches full depth at the midpoint, without a boundary step.
+      fadeFrames = Math.max(1, Math.min(Math.round(0.020 * data.sr),
+        Math.floor((to - from) / 2)));
+    if (to - from < 2)
+      throw new Error(stem.name + ': passage attenuation requires at least two audio sample frames for continuous fades.');
     for (var j = 0; j < n; j++) {
       // A 20 ms fade on both boundaries, anchored in the original timeline.
       var depth = (j > from && j < to) ?
@@ -552,7 +558,7 @@
           if (delta) {
             var diff=delta/rate;
             mismatchMessages.push(s.name + ' differs by ' + diff.toFixed(4) + ' seconds.');
-            if (Math.abs(diff)>LENGTH_TOLERANCE_SECONDS && !$('stemAllowMismatch').checked)
+            if (!$('stemAllowMismatch').checked)
               throw new Error('Stem lengths differ: ' + mismatchMessages.join(' ') +
                 ' Select the mismatch checkbox to permit start-aligned trimming/padding.');
           }
