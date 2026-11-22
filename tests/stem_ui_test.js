@@ -312,6 +312,75 @@ async function flush(){
   assert.equal(q.downloaded.length,0,'stale cancelled MP3 job must not download');
   q.ui.close();
 
+  // Exact decoded-frame parity is required unless the user explicitly opts in.
+  // A one-frame difference and a 10 ms difference both previously slipped
+  // through the 25 ms tolerance and silently padded the shorter source.
+  for (const shorterFrames of [47999,47520]) {
+    const short=fakeStem('Short',.3,48000,shorterFrames/48000);
+    const m=harness([fakeStem('Reference',.2,48000,1),short]);
+    await m.ui.open({name:'Unequal lengths.zip',size:2000});
+    m.el('stemBuild').fire('click');await flush();
+    assert.match(m.el('stemStatus').textContent,/Stem lengths differ/);
+    assert.equal(m.el('stemExport').disabled,true,
+      'unchecked mismatch cannot export silently padded audio');
+    assert.equal(m.audios.length,0,'unchecked mismatch cannot publish preview');
+    m.el('stemAllowMismatch').checked=true;
+    m.el('stemBuild').fire('click');await flush();
+    assert.equal(m.el('stemExport').disabled,false,'explicit opt-in permits padding');
+    assert.equal(m.audios.at(-1).length,48000);
+    assert(Math.abs(m.audios.at(-1).getChannelData(0)[shorterFrames-1]-.5)<1e-6);
+    assert(Math.abs(m.audios.at(-1).getChannelData(0)[shorterFrames]-.2)<1e-6,
+      'opted-in shorter stem is zero padded without shifting the reference');
+    m.ui.close();
+  }
+
+  // Short 100%-mute windows must reach full attenuation at their midpoint.
+  // A 20 ms fixed fade on both sides would never reach zero for these.
+  for(const milliseconds of [10,20,40]) {
+    const w=harness([fakeStem('Short window',.2,48000,1)]);
+    await w.ui.open({name:'Short window.zip',size:2000});
+    const start=.2, end=start+milliseconds/1000;
+    w.stems[0].passageStart=start;
+    w.stems[0].passageEnd=end;
+    w.stems[0].passageReduction=100;
+    w.el('stemBuild').fire('click');await flush();
+    assert.equal(w.el('stemExport').disabled,false,'short mute build must succeed');
+    const samples=w.audios.at(-1).getChannelData(0),
+      from=Math.round(start*48000),to=Math.round(end*48000),middle=(from+to)/2;
+    assert(Math.abs(samples[from]-.2)<1e-6,'start boundary continuous '+milliseconds);
+    assert(Math.abs(samples[to]-.2)<1e-6,'end boundary continuous '+milliseconds);
+    assert(Math.abs(samples[middle])<1e-6,'full mute at midpoint '+milliseconds);
+    assert(Math.abs(samples[from-1]-.2)<1e-6,'before start unchanged '+milliseconds);
+    assert(Math.abs(samples[to+1]-.2)<1e-6,'after end unchanged '+milliseconds);
+    assert(samples[from+1]<.2 && samples[from+1]>=0,'fade starts smoothly '+milliseconds);
+    w.ui.close();
+  }
+
+  // A one-frame 100% mute has no interior sample on which a continuous
+  // fade can reach full depth. Reject it instead of silently doing nothing.
+  // Two frames are the minimum permitted interval under the existing policy.
+  for (const frames of [1,2]) {
+    const w=harness([fakeStem('Frame policy',.2,48000,1)]);
+    await w.ui.open({name:'Frame policy.zip',size:2000});
+    const from=9600;
+    w.stems[0].passageStart=from/48000;
+    w.stems[0].passageEnd=(from+frames)/48000;
+    w.stems[0].passageReduction=100;
+    w.el('stemBuild').fire('click');await flush();
+    if(frames===1) {
+      assert.match(w.el('stemStatus').textContent,/at least two audio sample frames/);
+      assert.equal(w.el('stemExport').disabled,true,'one-frame attenuation cannot export');
+      assert.equal(w.audios.length,0,'one-frame attenuation cannot publish preview');
+    } else {
+      assert.equal(w.el('stemExport').disabled,false,'two-frame attenuation is permitted');
+      const audio=w.audios.at(-1).getChannelData(0);
+      assert(Math.abs(audio[from]-.2)<1e-6,'two-frame start boundary unchanged');
+      assert(Math.abs(audio[from+1])<1e-6,'two-frame center reaches full mute');
+      assert(Math.abs(audio[from+2]-.2)<1e-6,'two-frame end boundary unchanged');
+    }
+    w.ui.close();
+  }
+
   // A different WAV sample rate is rejected before silent resampling.
   const j=harness([fakeStem('First',.2,48000,1),fakeStem('Other',.3,44100,1)]);
   await j.ui.open({name:'Mismatch.zip',size:2000});
