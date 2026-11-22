@@ -42,6 +42,7 @@ frames.forEach((f,i)=>bytes.set(f,i*frameSize));
 class FakeChunk { constructor(options){Object.assign(this,options);} }
 class FakeDecoder {
   static instances=[];
+  static async isConfigSupported(config) { return {supported:config.codec==='mp3',config}; }
   constructor(callbacks){this.callbacks=callbacks;this.pending=[];this.decodeQueueSize=0;this.flushes=0;this.closed=false;FakeDecoder.instances.push(this);}
   configure(options){this.config=options;}
   decode(chunk){this.pending.push(chunk);}
@@ -167,4 +168,33 @@ class FakeDecoder {
   assert(instance.audioClosed,'oversized AudioData must be closed');
   assert(instance.closed,'decoder must close after oversized output');
   console.log('Oversized decoded audio callback rejected before plane copy.');
+})().catch(e=>{console.error(e);process.exitCode=1;});
+
+(async()=>{
+  // A browser exposing AudioDecoder without MP3 support must fail closed.
+  const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+  const load=(decoder)=>{
+    const root={AudioDecoder:decoder,EncodedAudioChunk:FakeChunk};
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+      {self:root,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
+    return root.SunoStemMp3;
+  };
+  class UnsupportedDecoder extends FakeDecoder {
+    static async isConfigSupported(){return {supported:false};}
+  }
+  const before=FakeDecoder.instances.length;
+  await assert.rejects(load(UnsupportedDecoder).decodePassage(bytes,0,.1),/configuration is unsupported/);
+  assert.equal(FakeDecoder.instances.length,before,'unsupported codec must not construct decoder');
+  class MissingProbeDecoder extends FakeDecoder {}
+  MissingProbeDecoder.isConfigSupported=undefined;
+  await assert.rejects(load(MissingProbeDecoder).decodePassage(bytes,0,.1),/cannot verify/);
+  assert.equal(FakeDecoder.instances.length,before,'missing probe must not construct decoder');
+  class ProbeRejectDecoder extends FakeDecoder {
+    static async isConfigSupported(){throw new Error('codec probe failed');}
+  }
+  await assert.rejects(load(ProbeRejectDecoder).decodePassage(bytes,0,.1),/codec probe failed/);
+  assert.equal(FakeDecoder.instances.length,before,'failed probe must not construct decoder');
+  const ok=await load(FakeDecoder).decodePassage(bytes,0,.1);
+  assert.equal(ok.channels[0].length,Math.round(.1*44100));
+  console.log('WebCodecs runtime codec support probe regressions passed.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
