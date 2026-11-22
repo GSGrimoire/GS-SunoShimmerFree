@@ -2,7 +2,8 @@
 
 **Owner directive:** 20 November 2026. **Plan status:** proposed specification, not a feature/release claim.  
 **North star:** a full local-first automated music studio with inspectable, reversible, human-controllable processing.  
-**Delivery:** capability-gated, no fixed release date. Milestone A is the excerpt-only manual preview described below.\n**Tracking:** [Studio initiative #18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18), [existing tool roadmap #2](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/2), [Viking stem repair #16](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/16).  
+**Delivery:** capability-gated, no fixed release date. Milestone A is the excerpt-only manual preview described below.
+**Tracking:** [Studio initiative #18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18), [existing tool roadmap #2](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/2), [Viking stem repair #16](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/16).  
 **Agent operating contract:** [SSF_AGENT_GATE.md](SSF_AGENT_GATE.md).
 
 ## 1. Product definition and experience
