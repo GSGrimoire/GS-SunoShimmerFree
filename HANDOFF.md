@@ -1,33 +1,24 @@
-# SunoShimmerFree: cross-session engineering checkpoint
+# SunoShimmerFree: durable cross-session engineering handoff
 
-**Recorded:** 20 November 2026. **Repository:** `GSGrimoire/GS-SunoShimmerFree`. This checkpoint can become stale; verify actual GitHub state on entry.
+**Repository:** `GSGrimoire/GS-SunoShimmerFree`. This file contains operating guidance, **not live commit or automation state**. Re-fetch [issue #18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18), current pull requests, reviews, claims and branch heads every session.
 
-## Owner direction and target
+## Product and milestone A
+The eventual product is an automated, local-first, reversible multitrack studio. The owner has withdrawn fixed release dates. **Milestone A is only a manual excerpt-only Multi-Stem Preview:** safe supported ZIP import and stem selection, visible sync/format limits, bounded passage audition, per-stem gain/mute/solo, reversible time-local attenuation with continuous fades, and matching selected-passage 32-bit floating-point WAV export with peak-overload reporting. No full-song export, per-stem Polish, selective cleaning, automatic improvement, mastering or training in A. Preserve the production single-track application.
 
-The full product goal is an **automated, local-first, browser-based music studio**, not merely a shimmer remover. Automatic analysis and safe suggested repairs lead into a multitrack manual studio, mixing, mastering and export. **Monday morning, 23 November 2026** is a target for the strongest validated deliverable, not permission to skip reviews or ship incomplete functionality as finished.
+## Existing integration path and known blockers
+- [#11](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/11) ZIP workspace inherits #3 → #6 → #8; disabling Polish in the interface does not remove inherited code. Review inherited source or explicitly restack and verify.
+- [#42](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/42) is the corrective passage editor line. Verify exact-frame alignment consent and repair short-window 100% mute/fade behavior. Confirm code and behavior parity before closing [#17](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/17) as superseded. [#40](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/40) diagnostics are deferred unless safely integrated.
+- [#47](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/47) WebCodecs passage decoding requires reconciliation with the **current** [#46](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/46) head, correction of stale review packet, bounded excerpt decode, seek/pre-roll, consistent alignment and native-memory/cancellation validation.
+- [#48](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/48) full-song streaming WAV is **deferred** beyond A. Existing standalone kernels are reference material for later milestones, not new A work.
+- [#16](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/16) tracks Viking fixture and listening uncertainty. Use public committed example files minimally, not as permission to upload private audio.
 
-See [product plan](docs/STUDIO_PRODUCT_PLAN.md) and [agent gate](docs/SSF_AGENT_GATE.md); umbrella [issue #18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18). Older product roadmap [#2](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/2) remains useful for background.
+## Execution order
+1. Correct [planning PR #19](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/19) and obtain targeted independent documentation review of its new immutable head; no self-merge.
+2. Repair and independently review the existing passage-editor and ZIP integration line, resolving ancestry and fade defects.
+3. Correct #47 against current #46, then obtain **one Full independent review** of the actual integration tip with dependencies.
+4. A named browser-capable operator or **owner Gus as fallback** records real-browser hostile ZIP, timing, peak-memory, cancellation, network, float-WAV parity and level-matched Viking 462–474-second listening results. GitHub-only sessions cannot claim this passed.
 
-## Existing work
+No new coder PR while at least two coder PRs await review; freeze new `studio-*` kernels until A ships. Claims and review verdicts are immutable-head scoped. Preserve stack history with merge commits only when independently approved and ordinarily authorized. Do not merge, publish or change production `main` on a deadline.
 
-- Current production `main`: single-track cleaning/editor/export.
-- Sound Polish drafts: #3 → #6 → #8 → #10 → #13 → #14.
-- Stem ZIP workspace draft #11 (stacked on #8), and excerpt preview/passage attenuation draft **#17** (stacked on #11).
-- **Review loop active:** a separate scheduled **ChatGPT-2 | SSF Independent Reviewer** completed a first full review of PR #17 at `4cff86b28980400664935096be643b120a48b79a` and required three corrections (worker cancellation, zero-sample preview, off-preview attenuation warning), [review record](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/17#pullrequestreview-5997692541). An immediate **ChatGPT-1 | SSF Coder** run applied the bounded correction and regression tests at NEW head `290bc2c7ce165b3910054a1f7a6669e1c40036ef`, [handoff](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/17#issuecomment-7047875951); GitHub pull-request checks passed on that exact head. **Next required action: independent re-review of `290bc2c`, then browser/audio acceptance.** No approval, merge or deployment yet.
-- [#16](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/16): real-world Viking-shimmer research and selective stem muting. The ten eight-minute MP3 stems at [example-files/viking-shimmer](https://github.com/GSGrimoire/GS-SunoShimmerFree/tree/main/example-files/viking-shimmer) were byte-verified against the original ZIP. The 96 MiB compiled mix limit is a product blocker for complete eight-minute multistem work.
-
-## Do not misstate status
-
-- **Active SSF hourly agent tasks (20 November 2026):** Reviewer at **:45** each hour (first 19:45 CET, ID `Automation_8d670f00137c8191898f82cf3d3e8556`); coder at **:15** each hour (first 20:15 CET, ID `Automation_648c71194ba48191a65b9b8239c4f93a`), Europe/Copenhagen, around the clock. Both were verified enabled. This is a **30-minute stagger**, not a 20-minute recurrence. Actual successful GitHub review/coding work still requires verification after the first runs. Portfolio-wide gates at :00/:30 are unchanged; avoid concurrent edit collisions.
-- Drafts are not merged or deployed. No full studio is verified. Do not merge or publish solely on tests or a deadline.
-- Reviewer and coder need separate sessions; a common GitHub account is not formal distinct-account approval.
-- Actual browser and human level-matched listening must validate any claimed shimmer improvement and release.
-
-## Safe next actions
-
-1. Re-fetch source and PR graph, then review #17 independently and post a consolidated pinned verdict.
-2. Send defects to ChatGPT-1 coder for one bounded correction attempt and re-review; do not let author approve its own work.
-3. Confirm baseline architecture and choose the smallest end-to-end project/timeline/streaming increment from #18.
-4. Update this file after meaningful accepted changes, preferably in the same reviewable pull request. Keep GitHub issue #18 current.
-
-**Record future session:** role, date, issue, branch, base/head SHA, validation evidence, next action and remaining blockers.
+## Next-session record
+Use the relevant PR and issue #18 for live status: actor/session, claim and lease, branch/base/head, changes, exact test commands and results, unresolved gates, and next reviewer/operator action. Automation schedules and identifiers are external live state, never evidence of successful execution.
