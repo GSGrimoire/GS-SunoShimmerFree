@@ -10,7 +10,7 @@ const TYPES = Object.freeze({
 });
 const EXACT = (obj, keys) => obj && typeof obj === 'object' && !Array.isArray(obj) &&
   Object.keys(obj).sort().join('|') === [...keys].sort().join('|');
-const iso = value => typeof value === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(value) && !Number.isNaN(Date.parse(value));
+const iso = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && !Number.isNaN(Date.parse(value));
 const token = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{8,128}$/.test(value);
 function validateReceipt(r) {
   if (!EXACT(r,['schemaVersion','consentVersion','subjectPseudonym','recordedAt','purpose','processing','training','rightsAttested','revokedAt'])) return false;
