@@ -52,6 +52,11 @@
       throw new Error('CRC-protected MP3 frames are not yet supported for aligned preview.');
     var start=Math.round(startSeconds*first.rate), end=Math.round(endSeconds*first.rate);
     var frames=end-start, totalBytes=frames*first.channels*4;
+    // Huge finite second values can round beyond precise sample-frame integers.
+    // A small end-start difference is not sufficient proof of a safe seek.
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+        !Number.isSafeInteger(frames) || frames<1)
+      throw new Error('MP3 passage sample-frame boundaries are invalid or unsafe.');
     if (!Number.isSafeInteger(totalBytes) || totalBytes>96*1048576)
       throw new Error('MP3 passage exceeds the 96 MiB decoded output budget.');
     // Browser implementations differ. A constructor existing does not prove
