@@ -371,6 +371,17 @@
     });
   }
   async function decodeStem(stem, gen, targetRate, clipStart, clipEnd) {
+    // The ZIP reader otherwise materializes the entire uncompressed entry before
+    // the MP3 decoder can apply its 64 MiB input cap. Reject from authenticated
+    // central-directory metadata first; ZIP extraction still verifies CRC.
+    if (!stem.wav) {
+      if (!stem.entry || !Number.isSafeInteger(stem.entry.size) || stem.entry.size < 0 ||
+          stem.entry.size > 64 * 1048576)
+        throw new Error(stem.name + ': MP3 compressed source exceeds the 64 MiB scan budget.');
+      if (!(clipEnd > clipStart && root.SunoStemMp3 && root.AudioDecoder &&
+            root.EncodedAudioChunk))
+        throw new Error(stem.name + ': MP3 requires a finite selected passage and supported WebCodecs. Full-source or fallback decode is disabled to protect browser memory.');
+    }
     status('Unpacking and decoding: ' + stem.name + ' (' + stem.format + ')...');
     var extractAbort = new AbortController();
     var bytes = await awaitSource(current.extract(stem.entry, extractAbort.signal), gen, extractAbort);
