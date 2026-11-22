@@ -59,6 +59,14 @@
       throw new Error('MP3 passage sample-frame boundaries are invalid or unsafe.');
     if (!Number.isSafeInteger(totalBytes) || totalBytes>96*1048576)
       throw new Error('MP3 passage exceeds the 96 MiB decoded output budget.');
+    // Until indexed seeking with verified bit-reservoir pre-roll exists, the
+    // decoder starts at frame zero. Bound submitted compressed frames rather
+    // than pretending a small output allocation makes late seeks cheap.
+    // 4096 MPEG-1 Layer III frames = at most 107.1 seconds at 44.1 kHz.
+    // The two guard frames below count toward the same admission budget.
+    var maxFeedFrames=4096;
+    if (Math.floor((end+2304)/1152)+1>maxFeedFrames)
+      throw new Error('MP3 passage requires excessive sequential decode; late passages need indexed seeking.');
     // Browser implementations differ. A constructor existing does not prove
     // MPEG-1 Layer III support; reject unsupported configurations before
     // allocating output planes or feeding compressed user media.
