@@ -1,0 +1,21 @@
+name: Synthetic consent receipt contract
+on:
+  pull_request:
+    paths:
+      - 'tests/security/consent-receipt-contract.cjs'
+      - 'tests/security/consent-receipt-contract.test.cjs'
+      - '.github/workflows/consent-receipt-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  consent-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/security/consent-receipt-contract.test.cjs
