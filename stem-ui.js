@@ -383,6 +383,10 @@
       data = await awaitSource(root.SunoStemMp3.decodePassage(bytes,clipStart,clipEnd,decodeAbort.signal),
         gen,decodeAbort);
     } else {
+      // Native full-source decode allocates before its size can be checked.
+      // Milestone A supports finite excerpts only, through bounded WebCodecs.
+      throw new Error(stem.name + ': MP3 requires a finite selected passage and supported WebCodecs. Full-source or fallback decode is disabled to protect browser memory.');
+      /* Legacy full-source decode is intentionally unreachable pending bounded admission.
       var rate = sniffMp3Rate(bytes);
       // decodeAudioData resamples to the AudioContext rate, which may differ
       // from the MP3's native header rate. Compare native rates separately.
@@ -400,7 +404,8 @@
       // Avoid cloning the entire decoded source, which can be hundreds of MiB.
       data = {channels: Array.from({length: decoded.numberOfChannels}, function(_, c) {
         return decoded.getChannelData(c);
-      }), sr: ctx.sampleRate, originalRate: rate, kind:'MP3'};
+        */
+    }), sr: ctx.sampleRate, originalRate: rate, kind:'MP3'};
     }
     ensureFresh(gen);
     if (data.channels.length < 1 || data.channels.length > 2)
@@ -562,6 +567,14 @@
       busy=false;renderActions();status('Enable at least one unmuted stem, or select Solo.',true);return;
     }
     var mismatchMessages = [], passageWarnings = [];
+    // MP3 decoder priming is not normalized against WAV sample zero.
+    // Explicit length/rate mismatch consent is NOT consent to a time shift.
+    if (selected.some(function(s){return !s.wav;}) &&
+        selected.some(function(s){return !!s.wav;})) {
+      busy=false;renderActions();
+      status('Cannot mix MP3 and WAV stems until decoder priming and sample alignment are verified. Use one source format.',true);
+      return;
+    }
     try {
       var rate=0, frames=0, sourceFrames=0, clipStartFrame=0,
         allocated=0, firstNativeRate=0;
