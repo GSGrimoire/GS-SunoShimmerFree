@@ -1,0 +1,27 @@
+name: Browser persistence boundary
+on:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'app.js'
+      - 'engine.js'
+      - 'edit.js'
+      - 'tests/security/no-implicit-browser-persistence.test.cjs'
+      - '.github/workflows/browser-persistence-boundary.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser-persistence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/security/no-implicit-browser-persistence.test.cjs
