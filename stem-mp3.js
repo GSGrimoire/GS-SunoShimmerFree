@@ -39,6 +39,10 @@
     // A previously cancelled request must not inspect an entire compressed source.
     if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
     var bytes=input instanceof Uint8Array?input:new Uint8Array(input);
+    // A bounded output does not bound the cost of scanning a compressed source.
+    // This cap applies to the already-extracted input, not ZIP extraction memory.
+    if (bytes.byteLength>64*1048576)
+      throw new Error('MP3 compressed source exceeds the 64 MiB scan budget.');
     var offset=startOfFrames(bytes), first=header(bytes,offset);
     if (!first) throw new Error('Unsupported MP3 framing: MPEG-1 Layer III is required.');
     // Xing/Info metadata may carry encoder delay/padding. Until gapless
@@ -81,6 +85,7 @@
     if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
     var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
     var decoder, failure=null, frameNumber=0, count=0;
+    var maxScanFrames=131072, scanBatchFrames=256;
     var decodedFrames=0, observedFrames=0, lastEnd=0;
     function active() { if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.'); }
     function output(audio) {
@@ -122,6 +127,14 @@
       decoder.configure(config);
       while (offset<bytes.length) {
         active();
+        if (frameNumber>=maxScanFrames)
+          throw new Error('MP3 source exceeds the bounded frame-scan budget.');
+        // Yield even after decoder feeding stops. Otherwise a short excerpt
+        // in a long file blocks the main thread and defeats timer-driven abort.
+        if (frameNumber && frameNumber%scanBatchFrames===0) {
+          await new Promise(function(resolve){setTimeout(resolve,0);});
+          active();
+        }
         // ID3v1 metadata is a 128-byte trailer, not an MP3 frame.
         if (offset+128===bytes.length && bytes[offset]===84 &&
             bytes[offset+1]===65 && bytes[offset+2]===71) break;
