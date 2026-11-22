@@ -90,28 +90,26 @@ await (async()=>{
   }
   assert.equal(probes,0,'invalid frame boundaries must not probe browser codec');
   assert.equal(constructed,0,'invalid frame boundaries must not allocate decoder');
-  // Late seeking must fail closed for a short source, before decoder probing.
+  // Late seeks must be refused before codec probing or decoder allocation,
+  // including when a full eight-minute synthetic source is available.
   for (const [start,end] of [[462,474],[108,109],[1e6,1e6+1]]) {
     await assert.rejects(root.SunoStemMp3.decodePassage(bytes,start,end),
-      /Requested MP3 passage exceeds source duration/);
+      /indexed late seeking is disabled pending real-browser sample-parity verification/);
   }
-  assert.equal(probes,0,'out-of-range late passages must not probe codec');
-  assert.equal(constructed,0,'out-of-range late passages must not construct decoder');
   const longFrameCount=Math.ceil(480*44100/1152);
   const longBytes=new Uint8Array(longFrameCount*frameSize);
   for(let i=0;i<longFrameCount;i++) longBytes.set(one,i*frameSize);
-  // A long source with valid reservoir reset points may be indexed, but a
-  // browser without verified support must still reject before allocation.
   await assert.rejects(root.SunoStemMp3.decodePassage(longBytes,462,474),
-    /Browser WebCodecs MP3 decoder configuration is unsupported|decoder\.configure is not a function/);
-  assert(probes>0,'in-range late passage must reach browser codec verification');
+    /indexed late seeking is disabled pending real-browser sample-parity verification/);
+  assert.equal(probes,0,'late passage must not probe codec');
+  assert.equal(constructed,0,'late passage must not construct decoder');
   const aborted=new AbortController();
   aborted.abort();
   await assert.rejects(root.SunoStemMp3.decodePassage(longBytes,0,1,aborted.signal),
     /MP3 decoding cancelled/);
-  assert(probes>0,'earlier codec probe remains recorded');
+  assert.equal(probes,0,'pre-aborted request must not probe codec');
   assert.equal(constructed,0,'pre-aborted request must not construct decoder');
-  console.log('Late MP3 passages index safely and reject unsupported decoders.');
+  console.log('Unverified late MP3 seeking fails closed before decoder allocation.');
   console.log('Unsafe and sub-sample MP3 passage boundaries rejected before codec probing.');
 })();
 
@@ -150,21 +148,16 @@ await (async()=>{
     assert.equal(out.channels[1][2303],-.125);
     assert.equal(FakeDecoder.instances.at(-1).flushes,1,'MP3 reservoir must not be reset every 16 frames');
     assert(FakeDecoder.instances.at(-1).closed,'decoder must close');
-    // Eight-minute synthetic source: seek must submit only a bounded late
-    // window, preserve absolute timestamps and return the requested samples.
+    // A fake decoder cannot validate real MP3 priming or bit-reservoir
+    // fidelity. Even when it echoes perfect timestamps, late playback must
+    // be rejected before decoder construction.
     const count=Math.ceil(480*44100/1152);
     const long=new Uint8Array(count*frameSize);
     for(let i=0;i<count;i++) long.set(one,i*frameSize);
-    const late=await root.SunoStemMp3.decodePassage(long,462,474);
-    assert.equal(late.channels[0].length,12*44100);
-    assert.equal(late.passageStartFrame,462*44100);
-    assert.equal(late.sourceFrames,count*1152);
-    assert.equal(late.channels[0][0],.25);
-    assert.equal(late.channels[1].at(-1),-.125);
-    const last=FakeDecoder.instances.at(-1);
-    assert(last.closed,'late indexed decoder closes');
-    assert(last.flushes===1,'late indexed decoder flushes only once');
-    assert(last.pending.length===0,'late decoder drains queued frames');
+    const before=FakeDecoder.instances.length;
+    await assert.rejects(root.SunoStemMp3.decodePassage(long,462,474),
+      /indexed late seeking is disabled pending real-browser sample-parity verification/);
+    assert.equal(FakeDecoder.instances.length,before,'no decoder on unverified late passage');
     for (const tag of ['Xing','Info']) {
       const tagged=bytes.slice();
       tagged.set(Buffer.from(tag),36); // MPEG-1 stereo: 4-byte header + 32-byte side information
