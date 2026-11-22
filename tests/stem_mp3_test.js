@@ -209,6 +209,36 @@ await (async()=>{
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
 await (async()=>{
+  // A long valid trailer must not monopolize the event loop after the short
+  // excerpt has stopped feeding the decoder. A timer must be able to abort.
+  const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+  const root={AudioDecoder:FakeDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:root,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
+  const trailing=new Uint8Array(frameSize*12000);
+  for(let i=0;i<12000;i++) trailing.set(one,i*frameSize);
+  const controller=new AbortController();
+  let timerFired=false;
+  const pending=root.SunoStemMp3.decodePassage(trailing,0,.1,controller.signal);
+  setTimeout(()=>{timerFired=true;controller.abort();},0);
+  await assert.rejects(pending,/MP3 decoding cancelled/);
+  assert(timerFired,'scan must yield so timer-driven abort can fire');
+  assert(FakeDecoder.instances.at(-1).closed,'cancelled scan closes decoder');
+  // The compressed-source budget must reject before support probing.
+  let probed=0;
+  class ProbeDecoder extends FakeDecoder {
+    static async isConfigSupported(config){probed++;return super.isConfigSupported(config);}
+  }
+  const limitedRoot={AudioDecoder:ProbeDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:limitedRoot,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
+  await assert.rejects(limitedRoot.SunoStemMp3.decodePassage(new Uint8Array(64*1048576+1),0,.1),
+    /64 MiB scan budget/);
+  assert.equal(probed,0,'oversized compressed source must not probe codec');
+  console.log('Cooperative trailing scan abort and compressed-source admission passed.');
+})();
+
+await (async()=>{
   // A hostile decoder must not force a full-duration plane allocation in a
   // small preview, regardless of its reported output frame count.
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
