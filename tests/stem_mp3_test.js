@@ -261,6 +261,26 @@ await (async()=>{
   assert.equal(p.feedStart,499-9-2,'reservoir of frame k-1 plus margin');
   assert.equal(p.lastFrame,511);
   assert.equal(p.preRollFrames,500-488);
+  // Reviewer regression: the first kept frame references 511 bytes,
+  // while keep-1 references none. Three preceding 60-byte payloads
+  // (the old planner's start) are insufficient; nine are required.
+  const adversarial=mk(40,60,0);
+  adversarial.frames[20].mainDataBegin=511;
+  const recovered=Decoder.planSeek(adversarial,20*1152,21*1152);
+  assert.equal(recovered.feedStart,9,'first kept frame reservoir plus warm-up');
+  assert.equal(recovered.preRollFrames,11);
+  const provided=adversarial.frames.slice(recovered.feedStart,20)
+    .reduce((sum,f)=>sum+f.payload,0);
+  assert(provided>=511,'planned input must include the kept frame dependency');
+  assert(3*60<511,'negative control: old planner underfeeds the reservoir');
+  // A later kept frame may have the longest dependency, even if the
+  // first kept frame and state frame have no backward references.
+  adversarial.frames[22].mainDataBegin=511;
+  const later=Decoder.planSeek(adversarial,20*1152,23*1152);
+  assert(later.feedStart<=9,'later kept-frame dependencies must be included');
+  // A very long excerpt must be rejected before decoder allocation.
+  assert.throws(()=>Decoder.planSeek(mk(10000,400,0),0,5000*1152),
+    /bounded decode budget/);
   const none=Decoder.planSeek(mk(1000,400,0),500*1152+7,500*1152+8);
   assert.equal(none.feedStart,499-2);
   // Near the start the plan clamps to frame 0 instead of failing.
