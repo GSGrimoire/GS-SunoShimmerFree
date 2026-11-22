@@ -1,3 +1,5 @@
+<p><img src="brand/full-logo-512.png" width="160" height="160" alt="GS SunoShimmerFree logo"></p>
+
 # GS SunoShimmerFree
 
 Automatic static and shimmer removal for AI-rendered music.
