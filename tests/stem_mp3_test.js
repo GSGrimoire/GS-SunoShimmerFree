@@ -40,6 +40,31 @@ await (async()=>{
   console.log('MP3 framing and unsupported-browser tests passed. WebCodecs browser decode not simulated.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
+// Finite seconds are not necessarily representable as exact sample frames.
+// Reject unsafe or rounded-to-zero intervals before codec probing/allocation.
+await (async()=>{
+  const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+  let probes=0,constructed=0;
+  class CountingDecoder {
+    static async isConfigSupported(){probes++;return {supported:true};}
+    constructor(){constructed++;}
+  }
+  const root={AudioDecoder:CountingDecoder,EncodedAudioChunk:class {}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:root,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
+  for(const [start,end] of [
+    [Number.MAX_SAFE_INTEGER/44100+1,Number.MAX_SAFE_INTEGER/44100+2],
+    [0,1e-12],
+    [1e12,1e12+0.1]
+  ]) {
+    await assert.rejects(root.SunoStemMp3.decodePassage(bytes,start,end),
+      /sample-frame boundaries are invalid or unsafe/);
+  }
+  assert.equal(probes,0,'invalid frame boundaries must not probe browser codec');
+  assert.equal(constructed,0,'invalid frame boundaries must not allocate decoder');
+  console.log('Unsafe and sub-sample MP3 passage boundaries rejected before codec probing.');
+})();
+
 class FakeChunk { constructor(options){Object.assign(this,options);} }
 class FakeDecoder {
   static instances=[];
