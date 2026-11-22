@@ -15,24 +15,9 @@ Prefer **two separate ChatGPT sessions**, not a single session which says it swi
 
 The initial PR #17 was authored by a ChatGPT coder in an earlier conversation, so the first reviewer must be in a **new, non-authoring session**.
 
-## Cadence, scheduler and limitations
+## Scheduling, capacity and claims
 
-**Owner target:** continuous 24-hour operation through Monday morning, 23 November 2026, with a role opportunity every **20 minutes**.
-
-**Scheduling capability verified in this planning session:** ChatGPT task automations allow a **minimum recurrence of one hour per automation**, not every 20 minutes. There is **no valid 20-minute ChatGPT automation schedule** and an ordinary GitHub Actions cron does **not** itself spawn ChatGPT coding sessions. Do not tell the owner that the requested schedule is active unless a compatible agent runner, credentials, permissions, separate-session isolation and actual execution have been verified.
-
-If an **external agent-capable orchestrator** is authorized and operational, use a deterministic 20-minute heartbeat dispatching alternating new sessions: coder on one tick, reviewer on the next; when a role has no eligible work, it records `no-op`. Reserve a short lease per claim, never run reviewer and author against a changing branch, and ensure jobs do not overlap. Do not add API credentials to public repository files or workflows.
-
-**Hourly fallback ACTIVE, verified in ChatGPT Automations on 20 November 2026:**
-
-| Role | Schedule | Automation ID | First scheduled run |
-| --- | --- | --- | --- |
-| Independent reviewer | Every hour at **:45**, Europe/Copenhagen | `Automation_8d670f00137c8191898f82cf3d3e8556` | Friday, 20 November 2026, **19:45 CET** |
-| Studio coder | Every hour at **:15**, Europe/Copenhagen | `Automation_648c71194ba48191a65b9b8239c4f93a` | Friday, 20 November 2026, **20:15 CET** |
-
-Both tasks were returned as **created and enabled**, then rechecked as enabled in the automation dashboard. They repeat around the clock until explicitly paused or changed. Reviewer runs first because PR #17 awaits an independent review; coder follows 30 minutes later. The unrelated portfolio-wide GS GitHub Reviewer / Implementer automations at **:00 / :30** remain unchanged; check their claims as possible sources of collision. Staggering does **not** establish separate GitHub identities, prove first-run success, or guarantee any release by Monday. Never treat a scheduler trigger as evidence that the agent actually wrote or reviewed code.
-
-A scheduler is a trigger, not a guarantee that external credentials, GitHub permissions, network access, checks or runtime are available. Stop and report if any prerequisite is missing. Do not silently schedule activity under a different repository's existing gate or broaden a portfolio-wide agent's authority.
+Schedulers trigger sessions but do not prove coding, reviews, or release. Check actual automation state outside this repository; record any live configuration and claims in issue #18, never hard-code automation IDs or current head SHAs here. Do not silently reuse portfolio automations or claim unsupported cadence. The coder opens **no new pull request while two or more of its pull requests await review**. Freeze new standalone `studio-*` kernel branches/pull requests until A ships. Use existing integration branches, one writer per branch, scoped claim and lease, and re-fetch branch head immediately before committing. Stop on collision.
 
 ## State machine and handoff contract
 
@@ -88,37 +73,19 @@ Review priorities:
 
 Recorded evidence from previous session: synthetic workflow tests and GitHub Actions checks passed on head `4cff86b...`; **that is not an independent review or human listening verdict**. For a stronger claim, inspect the current latest head, not just this historical pointer.
 
-## Work selection and priority
+## Current milestone A and release gates
 
-Do not make parallel high-risk changes while the branch stack remains unreviewed.
+The long-term studio goal does not change the narrow current acceptance contract. Milestone A is **manual excerpt-only Multi-Stem Preview**: safe local ZIP import, stem selection and honest sync/browser limits; bounded synchronized passage playback; per-stem gain, mute/solo and reversible time-local attenuation with continuous fades; and selected-passage **32-bit floating-point WAV** export matching preview, with unclamped float mixing and peak-overload reporting. Excerpt-only diagnostics are optional. Per-stem Polish, selective cleaning, automatic repair, long-form export, mastering, training and standalone kernels are not A dependencies. Preserve existing production single-track behavior.
 
-1. Independently review **#17**, then prioritize corrections and regression, keeping the same reviewer separate from the coder.
-2. Reconcile **#11** ZIP workspace review and stack prerequisite **#3 → #6 → #8**. Review the separate **#10 → #13 → #14** chain before merging localized analysis with stem workspace.
-3. Implement the next thin **Studio vertical slice** from product plan #18: project manifest + bounded full-length preview/mix, not another generic spectral effect.
-4. Use the confirmed Viking audio test fixture for manual real-world acceptance, with a clean control. Write results in #16 or linked research docs.
-5. Protect production `main` and deployed website. Stage preview separately until release evidence passes; do not automatically ship to meet a date.
+Execution order: (1) correct planning PR #19, targeted independent documentation review; (2) repair #42 short-window 100% mute/fades, confirm exact-frame mismatch consent and #17 parity before closing #17; (3) reconcile #47 with **current** #46 head, bounded decode/seek/pre-roll, consistent decoder alignment and memory/cancellation evidence, then one independent **Full review of actual integration-tip SHA**. Defer #40 diagnostics and #48 long-form export. #11's #3 → #6 → #8 ancestry still requires explicit review or carefully tested restacking even if Polish is disabled in A.
 
-**Dependency example:** PR #17 is stacked on PR #11, which itself depends on the Sound Polish branch. A green #17 check does not give permission to merge it into `main` directly.
-
-## Release gate: Monday is a target, not authorization
-
-Before any public release or merge to a deployment-triggering branch, verify:
-
-- [ ] Feature and behavior contract explicitly states what is complete and what remains unavailable.
-- [ ] All required current-commit independent reviews passed, including ZIP/file security and full duration changes.
-- [ ] Automated regressions passed at the integrated head, with evidence that no test was silently skipped.
-- [ ] Test five-minute and eight-minute multistem cases in an actual browser with real audio and inspect memory/cancel/exports.
-- [ ] Check synchronized playback, MP3 padding, fades, silent clean-stem bypass, level-matched comparison and no wrong-track renders.
-- [ ] Confirm no secrets/music uploads, public fixture exposures understood and all owner-held safety or release decisions resolved.
-- [ ] Deploy only through the approved environment and verify the actual hosted site, with rollback to prior production if a serious regression appears.
-
-If only part of the complete studio passes, label it **Studio Preview / Alpha**, or hold release. No unattended role may **infer** the owner's subjective musical acceptance from spectral metrics. Log a clear decision by the Monday morning checkpoint.
+A requires final-head synthetic tests (hostile ZIP, click/fade alignment, stale worker, cancellation, memory and preview/float-WAV parity), real-browser peak memory for eight-minute ten-stem Viking input, runtime codec probing, no unexpected post-load network requests, and real-audio level-matched listening at 462–474 seconds. **A named browser-capable reviewer/session, or owner Gus as fallback, is the gate executor** and records browser/memory/listening evidence. GitHub-only sessions cannot certify these gates. Missing evidence means **hold unreleased**. No fixed date authorizes merge or deployment. Respect local-first privacy and review third-party licenses before incorporation.
 
 ## Auditor and next-session checklist
 
 1. Read [#18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18), product plan and [#16](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/16).
 2. Read latest PRs and source SHAs, not cached snapshots; inspect `main` and draft branch graph.
-3. Check whether **any actual scheduler was activated**; this document alone is not one.
+3. Check actual automation state and latest claims in issue #18; this document alone does not activate a scheduler.
 4. Declare `[ChatGPT-1 | SSF Coder]` or `[ChatGPT-2 | SSF Independent Reviewer]` with your role and new session ID if one is available.
 5. Claim one task; review frozen source or implement; use regression tests; write the exact outcome in a PR/issue, and yield safely.
 6. Never mark `RELEASED` based only on code, plan documents or passing automated checks.
