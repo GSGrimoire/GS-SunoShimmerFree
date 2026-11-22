@@ -44,14 +44,15 @@
       '<div class="stem-playback"><button type="button" id="stemPlay">Play preview</button>',
       '<label for="stemSeek">Playback position</label><input id="stemSeek" type="range" min="0" max="1000" step="1" value="0">',
       '<span id="stemTime">0:00 / 0:00</span></div>',
-      '<div class="stem-build"><label for="stemBits">Download as</label>',
+      '<div class="stem-build"><label for="stemBits">Download as (milestone A: 32-bit float WAV passage)</label>',
       '<select id="stemBits"><option value="32">32-bit float WAV</option><option value="24">24-bit WAV</option>',
       '<option value="16">16-bit WAV</option><option value="mp3-320">MP3 320 kilobits/s</option>',
       '<option value="mp3-256">MP3 256 kilobits/s</option><option value="mp3-192">MP3 192 kilobits/s</option></select>',
       '<button type="button" id="stemExport">Export previewed mix or stem</button></div>',
       '<p class="stem-note">Individual preview and export use the selected stem controls. A compiled mix sums enabled unmuted stems; Solo overrides Enable but not Mute.',
       ' Processing is sequential and can take time. A compiled mix is limited to 96 MiB. For long tracks, set a short preview passage first.',
-      ' Individual MP3s are still decoded in full before extraction of that passage, so memory pressure is possible.</p>',
+      ' MP3 preview requires a finite excerpt and supported WebCodecs; decoding starts at the beginning and late passages beyond the sequential decode limit are rejected.',
+      ' The entire compressed ZIP entry may be materialized before decoding. Native decoder memory is not measured. Mixed WAV/MP3 stems are blocked until alignment is verified.</p>',
       '</div>'
     ].join('');
     document.body.appendChild(box);
