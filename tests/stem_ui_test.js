@@ -145,11 +145,42 @@ async function mixedRateExcerptRegression() {
   h.el('stemExport').fire('click');
   assert(h.downloaded.at(-1).endsWith('.wav'),'mixed-rate excerpt supports float WAV export');
 }
+// Fractional excerpt boundaries round differently at 44.1 and 48 kHz.
+// Verify both stem orders and a short window: a passage buffer must never
+// be clipped as if its first sample were at absolute source frame zero.
+async function fractionalMixedRateRegression() {
+  for (const mp3First of [false,true]) {
+    for (const end of ['0.001','0.1']) {
+      const wav=fakeStem('Reference',.2,48000,4);
+      const mp3=fakeStem('MP3 excerpt',.3,44100,4);
+      mp3.wav=null;mp3.mp3=mp3.entry;mp3.format='MP3';
+      mp3._file=Uint8Array.of(255,251,144,0);
+      const h=harness(mp3First?[mp3,wav]:[wav,mp3],{webCodecs:true});
+      await h.ui.open({name:'Fractional rates.zip',size:2000});
+      h.el('stemClipStart').value='0.0001';
+      h.el('stemClipEnd').value=end;
+      h.el('stemAllowMismatch').checked=true;
+      h.el('stemBuild').fire('click');await flush();
+      assert.equal(h.audios.length,1,'fractional mixed-rate preview must build');
+      const rate=mp3First?44100:48000;
+      const expected=Math.round(Number(end)*rate)-Math.round(.0001*rate);
+      assert.equal(h.audios[0].length,expected,'fractional destination length');
+      const channel=h.audios[0].getChannelData(0);
+      assert(Math.abs(channel[Math.floor(expected/2)]-.5)<.01,
+        'fractional passage must preserve both stems at midpoint');
+      h.el('stemBits').value='32';
+      h.el('stemExport').fire('click');
+      assert(h.downloaded.at(-1).endsWith('.wav'),'fractional excerpt must export float WAV');
+      h.ui.close();
+    }
+  }
+}
 async function flush(){
   for(let i=0;i<7;i++)await new Promise(resolve=>setImmediate(resolve));
 }
 (async()=>{
   await mixedRateExcerptRegression();
+  await fractionalMixedRateRegression();
   const h=harness([fakeStem('Lead Vocals',.2),fakeStem('Drums',.3)]);
   await h.ui.open({name:'Synthetic Stems.zip',size:1234});
   assert.equal(h.el('stemList').children.length,2,'two stem cards');
