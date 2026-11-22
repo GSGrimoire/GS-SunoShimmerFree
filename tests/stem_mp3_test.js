@@ -69,6 +69,21 @@ class FakeDecoder {
     secondProtected[frameSize+1]&=~1;
     await assert.rejects(root.SunoStemMp3.decodePassage(secondProtected,0,.1),/CRC-protected/);
   }
+  // Decoder output beginning after sample zero must not silently produce
+  // a zero-filled passage prefix that appears correctly aligned.
+  class MissingInitialFrameDecoder extends FakeDecoder {
+    decode(chunk) {
+      if (this.pending.length===0) {
+        chunk={...chunk,timestamp:Math.round(1152*1000000/this.config.sampleRate)};
+      }
+      super.decode(chunk);
+    }
+  }
+  const shiftedRoot={AudioDecoder:MissingInitialFrameDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:shiftedRoot,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
+  await assert.rejects(shiftedRoot.SunoStemMp3.decodePassage(bytes,0,.1),/omitted initial audio frames/);
+  assert(MissingInitialFrameDecoder.instances.at(-1).closed,'decoder must close on missing initial frames');
   console.log('Synthetic decoder timestamp and single-flush tests passed; real WebCodecs remains unverified.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
