@@ -108,14 +108,27 @@
       throw new Error('MP3 passage sample-frame boundaries are invalid or unsafe.');
     if (!Number.isSafeInteger(totalBytes) || totalBytes>96*1048576)
       throw new Error('MP3 passage exceeds the 96 MiB decoded output budget.');
-    // Until indexed seeking with verified bit-reservoir pre-roll exists, the
-    // decoder starts at frame zero. Bound submitted compressed frames rather
-    // than pretending a small output allocation makes late seeks cheap.
-    // 4096 MPEG-1 Layer III frames = at most 107.1 seconds at 44.1 kHz.
-    // The two guard frames below count toward the same admission budget.
-    var maxFeedFrames=4096;
-    if (Math.floor((end+2304)/1152)+1>maxFeedFrames)
-      throw new Error('MP3 passage requires excessive sequential decode; late passages need indexed seeking.');
+    // For late windows, start only at a reservoir-reset frame and decode
+    // at least twelve guard frames before the requested sample. The index
+    // validates every intervening frame and bounds total compressed input.
+    var maxFeedFrames=4096, seekFrame=0, indexed=null;
+    if (Math.floor((end+2304)/1152)+1>maxFeedFrames) {
+      indexed=await indexFrames(bytes,signal);
+      if (end>indexed.sourceFrames)
+        throw new Error('Requested MP3 passage exceeds source duration.');
+      var targetFrame=Math.floor(start/1152);
+      // A reservoir reset is a necessary but not sufficient random-access
+      // condition. Decode a conservative warm-up and fail on timing defects.
+      for(var candidate=Math.max(0,targetFrame-12);candidate>=0;candidate--) {
+        if(indexed.frames[candidate].mainDataBegin===0) {
+          seekFrame=candidate;break;
+        }
+      }
+      if(targetFrame-seekFrame<12)
+        throw new Error('MP3 indexed seek lacks twelve validated pre-roll frames.');
+      if(Math.floor((end+2304)/1152)+1-seekFrame>maxFeedFrames)
+        throw new Error('MP3 indexed passage exceeds the bounded decode budget.');
+    }
     // Browser implementations differ. A constructor existing does not prove
     // MPEG-1 Layer III support; reject unsupported configurations before
     // allocating output planes or feeding compressed user media.
@@ -127,7 +140,8 @@
       throw new Error('Browser WebCodecs MP3 decoder configuration is unsupported.');
     if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
     var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
-    var decoder, failure=null, frameNumber=0, count=0;
+    if (indexed) offset=indexed.frames[seekFrame].offset;
+    var decoder, failure=null, frameNumber=seekFrame, count=0;
     var maxScanFrames=131072, scanBatchFrames=256;
     var decodedFrames=0, observedFrames=0, lastEnd=0;
     function active() { if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.'); }
@@ -145,7 +159,7 @@
           throw new Error('MP3 decoded audio chunk exceeds the bounded callback budget.');
         // An initial positive timestamp would silently zero-fill the start
         // of an aligned preview. Require the decoder timeline to start at zero.
-        if (!observedFrames && begin!==0)
+        if (!observedFrames && begin!==seekFrame*1152)
           throw new Error('MP3 decoder omitted initial audio frames.');
         if (observedFrames && begin<lastEnd)
           throw new Error('Overlapping or out-of-order MP3 decoded timestamps.');
@@ -232,7 +246,7 @@
       if (!observedFrames || lastEnd<end)
         throw new Error('MP3 decoder did not produce the complete requested passage.');
       return {channels:channels,sr:first.rate,originalRate:first.rate,kind:'MP3',
-        sourceFrames:frameNumber*1152,passageStartFrame:start};
+        sourceFrames:indexed?indexed.sourceFrames:frameNumber*1152,passageStartFrame:start};
     } finally {
       if (signal) signal.removeEventListener('abort',abort);
       try {decoder.close();}catch(_){}
