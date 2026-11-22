@@ -113,6 +113,11 @@
     // validates every intervening frame and bounds total compressed input.
     var maxFeedFrames=4096, seekFrame=0, indexed=null;
     if (Math.floor((end+2304)/1152)+1>maxFeedFrames) {
+      // A reservoir-reset frame and synthetic timestamp echoes do not prove
+      // independent midstream decode, encoder priming or sample alignment.
+      // Keep the index available for offline validation, but do not decode
+      // an unverified late passage or expose a misleading audio export.
+      throw new Error('MP3 indexed late seeking is disabled pending real-browser sample-parity verification.');
       indexed=await indexFrames(bytes,signal);
       if (end>indexed.sourceFrames)
         throw new Error('Requested MP3 passage exceeds source duration.');
