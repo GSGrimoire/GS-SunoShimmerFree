@@ -27,7 +27,7 @@ The user should be able to build a song from an existing mix or a Suno-native st
 - **Non-destructive and reproducible:** source media immutable; rendered variants are derived. Save effect names, version, parameters, time ranges, reference levels and source fingerprints.
 - **Competitive experience without false promises:** do not imply the browser can demix source stems better than Suno or restore clipped/lossy material with certainty; never imply that v1's static/shimmer mask removes sustained harmonic corruption by default.
 
-## 2. Audit of current baseline (as of 20 November 2026)
+## 2. Historical baseline (re-check current issue #18 and pull requests)
 
 | Capability | Evidence/status |
 | --- | --- |
@@ -36,7 +36,7 @@ The user should be able to build a song from an existing mix or a Suno-native st
 | Optional tone polish, dynamics, loudness and transients | **Draft stacked** pull requests [#3](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/3) → [#6](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/6) → [#8](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/8) → [#10](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/10); no blanket released claim |
 | Automatic quality diagnostics and localized shimmer | **Draft** [#13](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/13) → [#14](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/14), on the Sound Polish stack |
 | Native ZIP/stem workspace, per-stem whole-track mute/solo/clean/polish/mix | **Draft** [#11](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/11), based on #8 |
-| Passage-specific stem attenuation and short previews | **Draft** [#17](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/17), based on #11; tests green at last recorded code head, real-browser audio not accepted |
+| Passage-specific stem attenuation and short previews | Draft corrective line [#42](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/42); verify parity before marking #17 superseded; browser audio not accepted |
 | Real extreme case | [Ten Viking MP3 stems](https://github.com/GSGrimoire/GS-SunoShimmerFree/tree/main/example-files/viking-shimmer), 8 minutes each; structural evidence and measurements in [research note](research/epic-viking-ambience-stem-aware-shimmer-2026-11-20.md) and issue #16 |
 | Long-song memory handling | **Blocking**: current mix workspace has 96 mebibyte compiled stereo limit, while 8-minute float32 stereo at 48 kHz is 176 mebibytes **per buffer** |
 | Studio project persistence / effect automation / true full-length multitrack render | Not established. No released complete studio |
@@ -128,7 +128,7 @@ Measurements and screenshots must be attached to an issue or documentation in Gi
 
 **Unverified now:** compatibility of the entire stacked PR chain; production preview release path; true bounded per-stem MP3 decoding; full-length 10-stem mix/export; live keyboard/timeline interaction; reliable automatic detection of sustained harmonic corruption; level-matched listening acceptance.
 
-**Do not:** alter the production site before release gates; enable server upload; expose private music; auto-delete stem content; relabel frequency reduction as perceptual improvement; merge an author's draft before required independent review; claim a Monday full release solely because code exists.
+**Do not:** alter the production site before release gates; enable server upload; expose private music; auto-delete stem content; relabel frequency reduction as perceptual improvement; merge an author's draft before required independent review; claim a release solely because code exists.
 
 ## 8. Ownership, planning and handoffs
 
