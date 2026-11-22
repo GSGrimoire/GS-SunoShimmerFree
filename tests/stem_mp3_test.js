@@ -82,3 +82,25 @@ class FakeDecoder {
   assert.equal(html.split(mp3).length-1,1);
   assert.equal(html.split(resample).length-1,1);
 }
+
+(async()=>{
+  // Closing a decoder must settle a build even if flush() never resolves.
+  const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+  class NeverFlushDecoder extends FakeDecoder {
+    async flush(){this.flushes++;return new Promise(()=>{});}
+  }
+  const root={AudioDecoder:NeverFlushDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:root,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
+  const controller=new AbortController();
+  const pending=root.SunoStemMp3.decodePassage(bytes,0,.1,controller.signal);
+  await Promise.resolve();
+  controller.abort();
+  await assert.rejects(
+    Promise.race([pending,new Promise((_,reject)=>setTimeout(()=>reject(new Error('flush abort timed out')),150))]),
+    /MP3 decoding cancelled/);
+  const instance=NeverFlushDecoder.instances.at(-1);
+  assert(instance.closed,'cancelled decoder must close');
+  assert.equal(instance.flushes,1,'test must reach pending flush');
+  console.log('Never-settling WebCodecs flush cancellation regression passed.');
+})().catch(e=>{console.error(e);process.exitCode=1;});
