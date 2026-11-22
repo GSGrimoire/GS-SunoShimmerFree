@@ -14,9 +14,19 @@
     return {rate:rate,size:size,channels:(bytes[i+3]&192)===192?1:2};
   }
   function startOfFrames(bytes) {
-    if (bytes.length>=10 && bytes[0]===73 && bytes[1]===68 && bytes[2]===51) {
-      var size=((bytes[6]&127)<<21)|((bytes[7]&127)<<14)|((bytes[8]&127)<<7)|(bytes[9]&127);
-      return 10+size+((bytes[5]&16)?10:0);
+    if (bytes.length>=3 && bytes[0]===73 && bytes[1]===68 && bytes[2]===51) {
+      if (bytes.length<10) throw new Error('Truncated ID3v2 header.');
+      // ID3v2 uses four 7-bit synchsafe size bytes. The high bit is
+      // reserved, and a footer is only defined for ID3v2.4.
+      if (bytes[3]===255 || bytes[3]<2 || bytes[3]>4 || bytes[4]===255 ||
+          (bytes[5] & (bytes[3]===2?63:bytes[3]===3?31:15)) ||
+          (bytes[3]!==4 && (bytes[5]&16)) ||
+          (bytes[6]|bytes[7]|bytes[8]|bytes[9])&128)
+        throw new Error('Invalid ID3v2 header.');
+      var size=bytes[6]*2097152+bytes[7]*16384+bytes[8]*128+bytes[9];
+      var offset=10+size+((bytes[5]&16)?10:0);
+      if (offset>bytes.length) throw new Error('Truncated ID3v2 metadata.');
+      return offset;
     }
     return 0;
   }
