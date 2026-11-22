@@ -263,33 +263,31 @@ async function flush(){
   assert.equal(p.el('stemExport').disabled,true,'zero-frame range cannot export');
   p.ui.close();
 
-  // MP3 preview must copy only the selected passage, never the full
-  // decoded AudioBuffer channel. The source throws if .slice() is called.
-  const mp3=fakeStem('MP3 no-copy',.25);
+  // Native full-source MP3 decoding must never run, even when a browser
+  // advertises decodeAudioData. A finite excerpt needs bounded WebCodecs.
+  const mp3=fakeStem('MP3 fallback blocked',.25);
   mp3.wav=null;mp3.mp3=mp3.entry;mp3.format='MP3';
-  const mp3Preview=harness([mp3],{mp3NoFullCopy:true});
-  await mp3Preview.ui.open({name:'MP3 preview.zip',size:1234});
-  mp3Preview.el('stemClipStart').value='0.25';
-  mp3Preview.el('stemClipEnd').value='0.5';
-  mp3Preview.el('stemBuild').fire('click');await flush();
-  assert.equal(mp3Preview.audios.length,1,'MP3 short preview builds without full source clone');
-  assert.equal(mp3Preview.audios[0].length,12000,'only selected quarter-second allocated');
-  assert(Math.abs(mp3Preview.audios[0].getChannelData(0)[100]-.25)<1e-6,
-    'MP3 short preview preserves sample value');
-  mp3Preview.ui.close();
-
-  // A malicious or simply long MP3 must not trigger a second full-sized
-  // channel allocation after browser decode. No huge synthetic allocation is
-  // required: the decoder advertises a length and throws on channel access.
-  const huge=fakeStem('Long MP3',.2);
-  huge.wav=null;huge.mp3=huge.entry;huge.format='MP3';
-  const oversized=harness([huge],{oversizedMp3:true});
-  await oversized.ui.open({name:'Long source.zip',size:1234});
-  oversized.el('stemBuild').fire('click');await flush();
-  assert.match(oversized.el('stemStatus').textContent,/96 MiB per-stem workspace budget/);
-  assert.equal(oversized.audios.length,0,'oversized decoded MP3 never allocates preview');
-  assert.equal(oversized.el('stemExport').disabled,true,'oversized decoded MP3 cannot export');
-  oversized.ui.close();
+  for (const options of [{mp3NoFullCopy:true},{oversizedMp3:true}]) {
+    const blocked=harness([mp3],options);
+    await blocked.ui.open({name:'No fallback.zip',size:1234});
+    blocked.el('stemClipStart').value='0.25';
+    blocked.el('stemClipEnd').value='0.5';
+    blocked.el('stemBuild').fire('click');await flush();
+    assert.match(blocked.el('stemStatus').textContent,/supported WebCodecs|fallback decode is disabled/);
+    assert.equal(blocked.audios.length,0,'native fallback must not publish preview');
+    assert.equal(blocked.el('stemExport').disabled,true,'native fallback must not enable export');
+    blocked.ui.close();
+  }
+  // With a bounded WebCodecs excerpt, a single-format MP3 preview remains
+  // available without invoking the unsafe full-source browser decoder.
+  const supported=harness([mp3],{webCodecs:true,oversizedMp3:true});
+  await supported.ui.open({name:'Bounded MP3.zip',size:1234});
+  supported.el('stemClipStart').value='0.25';
+  supported.el('stemClipEnd').value='0.5';
+  supported.el('stemBuild').fire('click');await flush();
+  assert.equal(supported.audios.length,1,'bounded single-format MP3 preview remains supported');
+  assert.equal(supported.el('stemExport').disabled,false);
+  supported.ui.close();
 
   // Cancellation must also settle a pending ZIP extraction await. The
   // browser/archive may finish the original operation later; stale data must
