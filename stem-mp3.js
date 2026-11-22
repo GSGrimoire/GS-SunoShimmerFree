@@ -56,6 +56,10 @@
         var begin=Math.round(audio.timestamp*first.rate/1000000), length=audio.numberOfFrames;
         if (!Number.isSafeInteger(begin) || begin<0 || !Number.isSafeInteger(length) || length<1)
           throw new Error('Invalid decoded MP3 timestamp or frame length.');
+        // An initial positive timestamp would silently zero-fill the start
+        // of an aligned preview. Require the decoder timeline to start at zero.
+        if (!observedFrames && begin!==0)
+          throw new Error('MP3 decoder omitted initial audio frames.');
         if (observedFrames && begin<lastEnd)
           throw new Error('Overlapping or out-of-order MP3 decoded timestamps.');
         if (observedFrames && begin>lastEnd)
