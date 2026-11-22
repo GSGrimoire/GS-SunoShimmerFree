@@ -70,6 +70,21 @@ await (async()=>{
   }
   assert.equal(probes,0,'late passages must not probe browser codec');
   assert.equal(constructed,0,'late passages must not construct decoder');
+  // Model an eight-minute source at 44.1 kHz. A late Viking window
+  // must fail before constructing a decoder even if the source is present.
+  const longFrameCount=Math.ceil(480*44100/1152);
+  const longBytes=new Uint8Array(longFrameCount*frameSize);
+  for(let i=0;i<longFrameCount;i++) longBytes.set(one,i*frameSize);
+  await assert.rejects(root.SunoStemMp3.decodePassage(longBytes,462,474),
+    /excessive sequential decode; late passages need indexed seeking/);
+  assert.equal(probes,0,'long-source late passage must not probe codec');
+  assert.equal(constructed,0,'long-source late passage must not construct decoder');
+  const aborted=new AbortController();
+  aborted.abort();
+  await assert.rejects(root.SunoStemMp3.decodePassage(longBytes,0,1,aborted.signal),
+    /MP3 decoding cancelled/);
+  assert.equal(probes,0,'pre-aborted request must not probe codec');
+  assert.equal(constructed,0,'pre-aborted request must not construct decoder');
   console.log('Late MP3 passages fail closed before sequential frame feeding.');
   console.log('Unsafe and sub-sample MP3 passage boundaries rejected before codec probing.');
 })();
@@ -141,6 +156,21 @@ await (async()=>{
     {self:shiftedRoot,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
   await assert.rejects(shiftedRoot.SunoStemMp3.decodePassage(bytes,0,.1),/omitted initial audio frames/);
   assert(MissingInitialFrameDecoder.instances.at(-1).closed,'decoder must close on missing initial frames');
+  // A timestamp hole must fail instead of silently padding the output.
+  class GappedDecoder extends FakeDecoder {
+    decode(chunk) {
+      if (this.pending.length===1) {
+        chunk={...chunk,timestamp:Math.round(3*1152*1000000/this.config.sampleRate)};
+      }
+      super.decode(chunk);
+    }
+  }
+  const gapRoot={AudioDecoder:GappedDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:gapRoot,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
+  await assert.rejects(gapRoot.SunoStemMp3.decodePassage(bytes,0,.1),
+    /Gap in MP3 decoded timestamps/);
+  assert(GappedDecoder.instances.at(-1).closed,'decoder must close on timestamp gap');
   console.log('Synthetic decoder timestamp and single-flush tests passed; real WebCodecs remains unverified.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
