@@ -65,9 +65,9 @@ test('grandfathered statements cannot be duplicated, moved or used in other file
     assert.notEqual(violations(statement, 'app.js').length, 0);
   }
   const app = fs.readFileSync(path.resolve(__dirname, '..', '..', 'app.js'), 'utf8');
-  assert.notEqual(violations(app + '\\n' + copy, 'app.js').length, 0);
-  assert.notEqual(violations(app + '\\n' + clear, 'app.js').length, 0);
-  assert.notEqual(violations('\\n' + app, 'app.js').length, 0,
+  assert.notEqual(violations(app + '\n' + copy, 'app.js').length, 0);
+  assert.notEqual(violations(app + '\n' + clear, 'app.js').length, 0);
+  assert.notEqual(violations('\n' + app, 'app.js').length, 0,
     'moving the original reviewed sites must invalidate their line-bound exceptions');
 });
 test('comparison is not an assignment', () => {
@@ -77,6 +77,6 @@ test('comparison is not an assignment', () => {
 test('known syntax blind spots are explicit, not security assurances', () => {
   // These negative controls prove the limited detector MUST NOT be called
   // a comprehensive injection gate.
-  assert.deepEqual(violations('target.innerHTML\\n = untrusted;'), []);
+  assert.deepEqual(violations('target.innerHTML\n = untrusted;'), []);
   assert.deepEqual(violations("target['innerHTML'] = untrusted;"), []);
 });
