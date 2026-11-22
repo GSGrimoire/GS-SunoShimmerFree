@@ -36,7 +36,9 @@
     if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) ||
         startSeconds<0 || endSeconds<=startSeconds)
       throw new Error('Bounded MP3 preview requires a finite start and end time.');
-    // A previously cancelled request must not inspect an entire compressed source.\n    if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');\n    var bytes=input instanceof Uint8Array?input:new Uint8Array(input);
+    // A previously cancelled request must not inspect an entire compressed source.
+    if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
+    var bytes=input instanceof Uint8Array?input:new Uint8Array(input);
     var offset=startOfFrames(bytes), first=header(bytes,offset);
     if (!first) throw new Error('Unsupported MP3 framing: MPEG-1 Layer III is required.');
     // Xing/Info metadata may carry encoder delay/padding. Until gapless
