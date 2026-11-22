@@ -1,4 +1,4 @@
-name: DOM injection sink regression
+name: Limited DOM sink line-pattern drift alert
 on:
   pull_request:
     paths:
@@ -20,7 +20,7 @@ on:
 permissions:
   contents: read
 jobs:
-  dom-sinks:
+  dom-line-pattern-alert:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
