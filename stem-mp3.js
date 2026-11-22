@@ -109,7 +109,25 @@
           count=0;
         }
       }
-      await decoder.flush();
+      // Closing AudioDecoder on abort does not guarantee that an outstanding
+      // flush promise settles. Race it against the abort signal, and attach
+      // both completion handlers so a later decoder rejection is consumed.
+      await new Promise(function(resolve,reject) {
+        var settled=false;
+        function finish(err) {
+          if (settled) return;
+          settled=true;
+          if (signal) signal.removeEventListener('abort',onAbort);
+          if (err) reject(err); else resolve();
+        }
+        function onAbort() { finish(new Error('MP3 decoding cancelled.')); }
+        if (signal) {
+          if (signal.aborted) { onAbort(); return; }
+          signal.addEventListener('abort',onAbort,{once:true});
+        }
+        try { Promise.resolve(decoder.flush()).then(function(){finish(null);},finish); }
+        catch(err) { finish(err); }
+      });
       active();if (failure) throw failure;
       if (frameNumber*1152<end) throw new Error('Requested MP3 passage exceeds source duration.');
       if (!observedFrames || lastEnd<end)
