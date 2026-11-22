@@ -1,7 +1,7 @@
 # SSF engineering agent gate: coder, independent reviewer, and release control
 
 **Date:** 20 November 2026. **Scope:** only `GSGrimoire/GS-SunoShimmerFree`.  
-**Current status (20 November 2026): two separate **hourly ChatGPT task automations are created and enabled** for this repository, offset by 30 minutes. A 20-minute runner is not available. Successful end-to-end autonomous coding/review execution is still subject to observed first task runs.  
+**Live scheduling status:** verify active automations and observed runs from current coordination in [issue #18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18); do not infer activity from this rulebook.  
 **Canonical product plan:** [STUDIO_PRODUCT_PLAN.md](STUDIO_PRODUCT_PLAN.md). **Initiative:** [#18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18).  
 
 ## Operating choice: separate coder and reviewer roles
