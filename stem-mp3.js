@@ -86,6 +86,10 @@
         if (!h || h.rate!==first.rate || h.channels!==first.channels ||
             offset+h.size>bytes.length)
           throw new Error('Invalid or changing MP3 frame sequence.');
+        // A CRC-protected frame changes the side-information layout. Reject
+        // protection changes anywhere, not only in the first frame.
+        if (!(bytes[offset+1]&1))
+          throw new Error('CRC-protected MP3 frames are not yet supported for aligned preview.');
         var stamp=Math.round(frameNumber*1152*1000000/first.rate);
         // Continue scanning frame headers for timeline duration, but stop
         // feeding decoder after the requested passage and two guard frames.
