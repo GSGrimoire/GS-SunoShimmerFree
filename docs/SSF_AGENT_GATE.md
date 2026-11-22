@@ -3,7 +3,6 @@
 **Date:** 20 November 2026. **Scope:** only `GSGrimoire/GS-SunoShimmerFree`.  
 **Current status (20 November 2026): two separate **hourly ChatGPT task automations are created and enabled** for this repository, offset by 30 minutes. A 20-minute runner is not available. Successful end-to-end autonomous coding/review execution is still subject to observed first task runs.  
 **Canonical product plan:** [STUDIO_PRODUCT_PLAN.md](STUDIO_PRODUCT_PLAN.md). **Initiative:** [#18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18).  
-**Immediate review:** [PR #17](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/17), source head `4cff86b28980400664935096be643b120a48b79a` at initial handoff, and its upstream [PR #11](https://github.com/GSGrimoire/GS-SunoShimmerFree/pull/11).
 
 ## Operating choice: separate coder and reviewer roles
 
@@ -13,7 +12,6 @@ Prefer **two separate ChatGPT sessions**, not a single session which says it swi
 - **ChatGPT-2 | SSF Reviewer:** loads the pinned head and base independently; gives a consolidated adversarial verdict; does not edit the code being reviewed. If it writes a fix, that code needs a different independent reviewer.
 - **Release coordinator (state machine, not another approving persona):** checks approvals and runtime evidence; merges only when authorized and all dependencies have cleared; does not treat calendar time, passing tests or review from the code author as sufficient.
 
-The initial PR #17 was authored by a ChatGPT coder in an earlier conversation, so the first reviewer must be in a **new, non-authoring session**.
 
 ## Scheduling, capacity and claims
 
@@ -57,21 +55,6 @@ Reviewer reports one of:
 - **`Changes required`**, exact SHA, severity, concrete failure scenario, minimal reproduction, required correction and related cases to inspect.
 
 One correction attempt for a reported defect before escalation; do not enter infinite corrective loops or turn unresolved failures into an implicit pass.
-
-## Immediate priority: independent review of PR #17
-
-Do **not** start by asking the same ChatGPT author session to review PR #17. Assign a distinct ChatGPT-2 reviewer.
-
-Review `stem-ui.js`, `stem.css`, `tests/stem_ui_test.js` and all relevant unchanged caller/worker/decoder paths in the actual PR #17 head, based on stem ZIP PR #11. Compare both implementations; ensure no release claims based on standalone synthetic tests.
-
-Review priorities:
-1. Correct sample-to-global-time mapping for selected 370–382 s and 462–474 s excerpts; 20-millisecond fades must not jump or erase wanted notes unexpectedly.
-2. The new short excerpt path must **not** claim true bounded decoding: MP3 `decodeAudioData` still decodes full stems. Consider out-of-memory, worker transfer and renderer allocation in real browsers.
-3. Verify source generation/cancellation guards, stale exports, invalid input including NaN/infinity, selecting passages outside durations, mismatch and resampling branches.
-4. Compare actual browser playback/export with what the mixer produced, including WAV/MP3 correctness and clipping after gain automation.
-5. Verify full branch dependency graph and tests, including negative controls. If a high-severity issue is found, give consolidated findings with exact lines/scenarios.
-
-Recorded evidence from previous session: synthetic workflow tests and GitHub Actions checks passed on head `4cff86b...`; **that is not an independent review or human listening verdict**. For a stronger claim, inspect the current latest head, not just this historical pointer.
 
 ## Current milestone A and release gates
 
