@@ -67,18 +67,36 @@
     var dv=new DataView(buf), len=buf.byteLength;
     function tag(o){return String.fromCharCode(dv.getUint8(o),dv.getUint8(o+1),dv.getUint8(o+2),dv.getUint8(o+3));}
     if(len<12||tag(0)!=='RIFF'||tag(8)!=='WAVE') throw new Error('Invalid WAV RIFF header.');
+    var declared=dv.getUint32(4,true);
+    // RF64 and streaming sentinel lengths require a separate ds64-aware reader.
+    if(declared===0xFFFFFFFF||declared<4||declared>len-8)
+      throw new Error('Invalid or unsupported WAV RIFF size.');
+    var limit=declared+8;
+    // A physical suffix outside RIFF is not audio. Reject it rather than
+    // silently accepting ambiguous appended containers or payloads.
+    if(limit!==len) throw new Error('WAV trailing bytes outside RIFF.');
     var o=12,fmt=null,off=-1,size=0;
-    while(o+8<=len){
+    while(o+8<=limit){
       var id=tag(o),n=dv.getUint32(o+4,true),body=o+8;
-      if(n>len-body) throw new Error('Truncated WAV chunk.');
+      if(n>limit-body) throw new Error('Truncated WAV chunk.');
+      if((n&1)&&body+n===limit) throw new Error('Missing WAV chunk pad byte.');
       if(id==='fmt '){
         if(n<16) throw new Error('Truncated WAV format.');
         fmt={code:dv.getUint16(body,true),ch:dv.getUint16(body+2,true),
           sr:dv.getUint32(body+4,true),align:dv.getUint16(body+12,true),
           bits:dv.getUint16(body+14,true)};
         if(fmt.code===65534){
-          if(n<40) throw new Error('Invalid extensible WAV format.');
-          fmt.code=dv.getUint16(body+24,true);
+          if(n<40||dv.getUint16(body+16,true)<22)
+            throw new Error('Invalid extensible WAV format.');
+          // KSDATAFORMAT_SUBTYPE_PCM/IEEE_FLOAT are the complete standard GUIDs.
+          var subtype=dv.getUint32(body+24,true);
+          var guid=[0,0,16,0,128,0,0,170,0,56,155,113];
+          for(var gi=0;gi<12;gi++)
+            if(dv.getUint8(body+28+gi)!==guid[gi])
+              throw new Error('Unsupported extensible WAV subtype GUID.');
+          if(subtype!==1&&subtype!==3)
+            throw new Error('Unsupported extensible WAV subtype GUID.');
+          fmt.code=subtype;
         }
       }
       if(id==='data'){off=body;size=n;break;}
