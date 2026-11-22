@@ -83,6 +83,31 @@
     return {rate:first.rate,channels:first.channels,frames:entries,
       sourceFrames:entries.length*1152};
   }
+  // Plan an indexed seek. Output frame n of an MPEG-1 Layer III decoder
+  // depends on frame n's main data and on frame n-1 (IMDCT overlap and
+  // synthesis filterbank state). Frame n-1 is only decoded correctly when all
+  // of its bit-reservoir bytes (main_data_begin reaches back up to 511 bytes,
+  // up to about nine frames at 32 kbit/s) were fed. So feeding starts early
+  // enough to cover the reservoir of the frame before the first kept frame,
+  // plus a safety margin. Pre-roll output is decoded and discarded.
+  var SEEK_MARGIN_FRAMES=2, GUARD_FRAMES=2;
+  function planSeek(index, startFrame, endFrame) {
+    var frames=index.frames;
+    if (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame) ||
+        startFrame<0 || endFrame<=startFrame)
+      throw new Error('MP3 seek requires a valid sample-frame interval.');
+    if (endFrame>index.sourceFrames)
+      throw new Error('Requested MP3 passage exceeds source duration.');
+    var keep=Math.floor(startFrame/1152), state=Math.max(0,keep-1);
+    var feed=state, back=frames[state].mainDataBegin;
+    while (back>0) {
+      if (feed===0) throw new Error('MP3 frame references unavailable bit-reservoir bytes.');
+      feed--; back-=frames[feed].payload;
+    }
+    feed=Math.max(0,feed-SEEK_MARGIN_FRAMES);
+    var last=Math.min(frames.length-1,Math.floor((endFrame-1)/1152)+GUARD_FRAMES);
+    return {feedStart:feed,keepFrame:keep,lastFrame:last,preRollFrames:keep-feed};
+  }
   async function decodePassage(input, startSeconds, endSeconds, signal) {
     if (!root.AudioDecoder || !root.EncodedAudioChunk)
       throw new Error('Bounded MP3 preview requires browser WebCodecs AudioDecoder support.');
@@ -98,34 +123,26 @@
       throw new Error('MP3 compressed source exceeds the 64 MiB scan budget.');
     var offset=startOfFrames(bytes), first=header(bytes,offset);
     if (!first) throw new Error('Unsupported MP3 framing: MPEG-1 Layer III is required.');
-    // Xing/Info metadata may carry encoder delay/padding. Until gapless
-    // accounting is implemented, never advertise frame-exact alignment.
-    var sideInfo=first.channels===1?17:32;
-    var xingAt=offset+4+sideInfo+((bytes[offset+1]&1)?0:2);
-    if (xingAt+4<=offset+first.size) {
-      var marker=String.fromCharCode.apply(null,bytes.subarray(xingAt,xingAt+4));
-      if (marker==='Xing' || marker==='Info')
-        throw new Error('MP3 Xing/Info encoder timing metadata is not yet supported for aligned preview.');
-    }
-    if (!(bytes[offset+1]&1))
-      throw new Error('CRC-protected MP3 frames are not yet supported for aligned preview.');
     var start=Math.round(startSeconds*first.rate), end=Math.round(endSeconds*first.rate);
     var frames=end-start, totalBytes=frames*first.channels*4;
     // Huge finite second values can round beyond precise sample-frame integers.
-    // A small end-start difference is not sufficient proof of a safe seek.
     if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
         !Number.isSafeInteger(frames) || frames<1)
       throw new Error('MP3 passage sample-frame boundaries are invalid or unsafe.');
     if (!Number.isSafeInteger(totalBytes) || totalBytes>96*1048576)
       throw new Error('MP3 passage exceeds the 96 MiB decoded output budget.');
-    // A reservoir-reset frame and synthetic timestamp echoes do not prove
-    // independent midstream decode, encoder priming or sample alignment.
-    // Fail closed until a named browser operator verifies real MP3 sample
-    // parity against full decoding. The bounded index remains available
-    // for independent offline analysis, not for production playback.
-    var maxFeedFrames=4096;
-    if (Math.floor((end+2304)/1152)+1>maxFeedFrames)
-      throw new Error('MP3 indexed late seeking is disabled pending real-browser sample-parity verification.');
+    // Validate the complete framing before any codec probe: MPEG-1 Layer III
+    // only, constant rate/layout, no CRC, no Xing/Info gapless metadata
+    // (its encoder delay is not applied), and every bit-reservoir reference
+    // resolvable. The index also gives the source duration and seek offsets.
+    var index;
+    try { index=await indexFrames(bytes,signal); }
+    catch (err) {
+      if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
+      throw err;
+    }
+    if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
+    var plan=planSeek(index,start,end);
     // Browser implementations differ. A constructor existing does not prove
     // MPEG-1 Layer III support; reject unsupported configurations before
     // allocating output planes or feeding compressed user media.
@@ -137,9 +154,9 @@
       throw new Error('Browser WebCodecs MP3 decoder configuration is unsupported.');
     if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
     var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
-    var decoder, failure=null, frameNumber=0, count=0;
-    var maxScanFrames=131072, scanBatchFrames=256;
-    var decodedFrames=0, observedFrames=0, lastEnd=0;
+    var decoder, failure=null, count=0;
+    var firstAllowed=plan.feedStart*1152, latestFirst=plan.keepFrame*1152;
+    var observedFrames=0, lastEnd=0;
     function active() { if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.'); }
     function output(audio) {
       try {
@@ -153,16 +170,16 @@
         // temporary plane, even when the requested passage is small.
         if (length>1152*32)
           throw new Error('MP3 decoded audio chunk exceeds the bounded callback budget.');
-        // An initial positive timestamp would silently zero-fill the start
-        // of an aligned preview. Require the decoder timeline to start at zero.
-        if (!observedFrames && begin!==0)
+        // Output must begin inside the discarded pre-roll, never after the
+        // first kept frame. Otherwise the start of the passage would be a
+        // silent zero-filled gap that only looks aligned.
+        if (!observedFrames && (begin<firstAllowed || begin>latestFirst))
           throw new Error('MP3 decoder omitted initial audio frames.');
         if (observedFrames && begin<lastEnd)
           throw new Error('Overlapping or out-of-order MP3 decoded timestamps.');
         if (observedFrames && begin>lastEnd)
           throw new Error('Gap in MP3 decoded timestamps.');
         observedFrames++;lastEnd=begin+length;
-        decodedFrames+=length;
         var from=Math.max(start,begin), to=Math.min(end,begin+length);
         if (to>from) {
           var temporary=new Float32Array(length);
@@ -178,36 +195,15 @@
     if (signal) signal.addEventListener('abort',abort,{once:true});
     try {
       decoder.configure(config);
-      while (offset<bytes.length) {
-        active();
-        if (frameNumber>=maxScanFrames)
-          throw new Error('MP3 source exceeds the bounded frame-scan budget.');
-        // Yield even after decoder feeding stops. Otherwise a short excerpt
-        // in a long file blocks the main thread and defeats timer-driven abort.
-        if (frameNumber && frameNumber%scanBatchFrames===0) {
-          await new Promise(function(resolve){setTimeout(resolve,0);});
-          active();
-        }
-        // ID3v1 metadata is a 128-byte trailer, not an MP3 frame.
-        if (offset+128===bytes.length && bytes[offset]===84 &&
-            bytes[offset+1]===65 && bytes[offset+2]===71) break;
-        var h=header(bytes,offset);
-        if (!h || h.rate!==first.rate || h.channels!==first.channels ||
-            offset+h.size>bytes.length)
-          throw new Error('Invalid or changing MP3 frame sequence.');
-        // A CRC-protected frame changes the side-information layout. Reject
-        // protection changes anywhere, not only in the first frame.
-        if (!(bytes[offset+1]&1))
-          throw new Error('CRC-protected MP3 frames are not yet supported for aligned preview.');
-        var stamp=Math.round(frameNumber*1152*1000000/first.rate);
-        // Continue scanning frame headers for timeline duration, but stop
-        // feeding decoder after the requested passage and two guard frames.
-        if (frameNumber*1152 <= end+2304) {
-          decoder.decode(new root.EncodedAudioChunk({type:'key',timestamp:stamp,
-            data:bytes.subarray(offset,offset+h.size)}));
-          count++;
-        }
-        frameNumber++;offset+=h.size;
+      for (var n=plan.feedStart;n<=plan.lastFrame;n++) {
+        active();if(failure)throw failure;
+        var f=index.frames[n];
+        // Timestamps are absolute source positions, so a late passage keeps
+        // its place on the shared stem timeline.
+        decoder.decode(new root.EncodedAudioChunk({type:'key',
+          timestamp:Math.round(n*1152*1000000/first.rate),
+          data:bytes.subarray(f.offset,f.offset+f.size)}));
+        count++;
         // Drain the decoder without flush() until the end. Repeated flushes
         // reset MP3 bit-reservoir state and can corrupt inter-frame audio.
         if (count===16) {
@@ -238,17 +234,21 @@
         catch(err) { finish(err); }
       });
       active();if (failure) throw failure;
-      if (frameNumber*1152<end) throw new Error('Requested MP3 passage exceeds source duration.');
       if (!observedFrames || lastEnd<end)
         throw new Error('MP3 decoder did not produce the complete requested passage.');
+      // timeline: positions are on the raw decoder-output timeline from the
+      // first MP3 frame. Encoder delay and the decoder's own delay are NOT
+      // removed; every MP3 stem uses this same timeline, and mixing MP3 with
+      // WAV stems stays blocked in the workspace.
       return {channels:channels,sr:first.rate,originalRate:first.rate,kind:'MP3',
-        sourceFrames:frameNumber*1152,passageStartFrame:start};
+        sourceFrames:index.sourceFrames,passageStartFrame:start,
+        timeline:'mp3-decoder-output',preRollFrames:plan.preRollFrames};
     } finally {
       if (signal) signal.removeEventListener('abort',abort);
       try {decoder.close();}catch(_){}
     }
   }
-  var api={decodePassage:decodePassage,indexFrames:indexFrames,header:header,startOfFrames:startOfFrames};
+  var api={decodePassage:decodePassage,indexFrames:indexFrames,planSeek:planSeek,header:header,startOfFrames:startOfFrames};
   if (typeof module!=='undefined' && module.exports) module.exports=api;
   else root.SunoStemMp3=api;
 })(typeof self!=='undefined'?self:this);

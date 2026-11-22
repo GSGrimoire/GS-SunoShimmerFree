@@ -51,7 +51,8 @@
       '<button type="button" id="stemExport">Export previewed mix or stem</button></div>',
       '<p class="stem-note">Individual preview and export use the selected stem controls. A compiled mix sums enabled unmuted stems; Solo overrides Enable but not Mute.',
       ' Processing is sequential and can take time. A compiled mix is limited to 96 MiB. For long tracks, set a short preview passage first.',
-      ' MP3 preview requires a finite excerpt and supported WebCodecs; late passages requiring indexed seeking are rejected until real-browser sample-parity verification is complete.',
+      ' MP3 preview requires a finite excerpt and supported WebCodecs. Only the selected passage is decoded, using indexed seeking with bit-reservoir pre-roll; seek parity is checked offline against FFmpeg, not yet verified in each browser.',
+      ' MP3 timing follows the decoder output timeline: encoder delay is not removed, identically for every MP3 stem.',
       ' The entire compressed ZIP entry may be materialized before decoding. Native decoder memory is not measured. Mixed WAV/MP3 stems are blocked until alignment is verified.</p>',
       '</div>'
     ].join('');
