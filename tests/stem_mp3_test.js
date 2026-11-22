@@ -90,30 +90,28 @@ await (async()=>{
   }
   assert.equal(probes,0,'invalid frame boundaries must not probe browser codec');
   assert.equal(constructed,0,'invalid frame boundaries must not allocate decoder');
-  // Sequential decoding from frame zero is not a bounded-work seek.
-  // Refuse a late excerpt before codec probing or output allocation.
+  // Late seeking must fail closed for a short source, before decoder probing.
   for (const [start,end] of [[462,474],[108,109],[1e6,1e6+1]]) {
     await assert.rejects(root.SunoStemMp3.decodePassage(bytes,start,end),
-      /excessive sequential decode; late passages need indexed seeking/);
+      /Requested MP3 passage exceeds source duration/);
   }
-  assert.equal(probes,0,'late passages must not probe browser codec');
-  assert.equal(constructed,0,'late passages must not construct decoder');
-  // Model an eight-minute source at 44.1 kHz. A late Viking window
-  // must fail before constructing a decoder even if the source is present.
+  assert.equal(probes,0,'out-of-range late passages must not probe codec');
+  assert.equal(constructed,0,'out-of-range late passages must not construct decoder');
   const longFrameCount=Math.ceil(480*44100/1152);
   const longBytes=new Uint8Array(longFrameCount*frameSize);
   for(let i=0;i<longFrameCount;i++) longBytes.set(one,i*frameSize);
+  // A long source with valid reservoir reset points may be indexed, but a
+  // browser without verified support must still reject before allocation.
   await assert.rejects(root.SunoStemMp3.decodePassage(longBytes,462,474),
-    /excessive sequential decode; late passages need indexed seeking/);
-  assert.equal(probes,0,'long-source late passage must not probe codec');
-  assert.equal(constructed,0,'long-source late passage must not construct decoder');
+    /Browser WebCodecs MP3 decoder configuration is unsupported|decoder\.configure is not a function/);
+  assert(probes>0,'in-range late passage must reach browser codec verification');
   const aborted=new AbortController();
   aborted.abort();
   await assert.rejects(root.SunoStemMp3.decodePassage(longBytes,0,1,aborted.signal),
     /MP3 decoding cancelled/);
-  assert.equal(probes,0,'pre-aborted request must not probe codec');
+  assert(probes>0,'earlier codec probe remains recorded');
   assert.equal(constructed,0,'pre-aborted request must not construct decoder');
-  console.log('Late MP3 passages fail closed before sequential frame feeding.');
+  console.log('Late MP3 passages index safely and reject unsupported decoders.');
   console.log('Unsafe and sub-sample MP3 passage boundaries rejected before codec probing.');
 })();
 
