@@ -47,3 +47,26 @@ test('reject malformed version, timestamps, processor and unknown dataset types'
  ];
  for(const change of cases){const r=fresh();change(r);assert.equal(validateReceipt(r),false);}
 });
+
+test('canonical UTC timestamps reject impossible dates in both fields',()=>{
+ for(const bad of ['2026-02-30T05:10:00.000Z','2025-02-29T05:10:00.000Z','2026-04-31T05:10:00.000Z']){
+  const recorded=fresh();recorded.recordedAt=bad;
+  assert.equal(validateReceipt(recorded),false,'recordedAt '+bad);
+  const revoked=fresh();revoked.revokedAt=bad;
+  assert.equal(validateReceipt(revoked),false,'revokedAt '+bad);
+ }
+ const leap=fresh();leap.recordedAt='2024-02-29T05:10:00.000Z';
+ leap.revokedAt='2024-02-29T05:11:00.000Z';
+ assert.equal(validateReceipt(leap),true);
+ leap.revokedAt='2024-02-29T05:09:00.000Z';
+ assert.equal(validateReceipt(leap),false,'revocation cannot predate recording');
+});
+test('exact type keys reject delimiter-collision replacements',()=>{
+ const r=fresh();
+ r.rightsAttested=true;
+ r.training.processing_decisions.enabled=true;
+ delete r.training.processing_decisions.types.manual_edits;
+ delete r.training.processing_decisions.types.model_errors;
+ r.training.processing_decisions.types['manual_edits|model_errors']=true;
+ assert.equal(validateReceipt(r),false,'combined key must not replace two required keys');
+});
