@@ -104,6 +104,16 @@ function harness(stems, options={}) {
   const root={SunoStemZip:{open:async()=>archive},WavCodec:wav,ShimmerEngine:Engine,
     SunoStemResample:Resample,AudioContext:AC,
     confirm:()=>true};
+  if(options.webCodecs) {
+    root.AudioDecoder=class {};
+    root.EncodedAudioChunk=class {};
+    root.SunoStemMp3={async decodePassage(bytes,start,end) {
+      const sr=44100, length=Math.round((end-start)*sr);
+      return {channels:[new Float32Array(length).fill(.3),new Float32Array(length).fill(.3)],
+        sr,originalRate:sr,sourceFrames:Math.round(4*sr),
+        passageStartFrame:Math.round(start*sr),kind:'MP3'};
+    }};
+  }
   const URLs={createObjectURL:()=> 'blob:synthetic',revokeObjectURL(){}};
   const ctx={window:root,document,Worker,Blob,URL:URLs,console,Float32Array,Uint8Array,
     ArrayBuffer,TextDecoder,AbortController,setInterval:()=>1,clearInterval(){},setTimeout:()=>0};
@@ -113,10 +123,33 @@ function harness(stems, options={}) {
     releaseHeldExtract(){assert(releaseHeldExtract,'held extraction missing');releaseHeldExtract();},
     heldExtractionAborted(){return heldSignal && heldSignal.aborted;}};
 }
+// A 44.1 kHz excerpt must retain its absolute origin after explicit
+// conversion to a 48 kHz mix. It must not be clipped a second time.
+async function mixedRateExcerptRegression() {
+  const first=fakeStem('Reference',.2,48000,4);
+  const second=fakeStem('MP3 excerpt',.3,44100,4);
+  second.wav=null;second.mp3=second.entry;second.format='MP3';
+  second._file=Uint8Array.of(255,251,144,0);
+  const h=harness([first,second],{webCodecs:true});
+  await h.ui.open({name:'Mixed rates.zip',size:2000});
+  h.el('stemClipStart').value='1';
+  h.el('stemClipEnd').value='2';
+  h.el('stemAllowMismatch').checked=true;
+  h.el('stemBuild').fire('click');await flush();
+  assert.equal(h.audios.length,1,'mixed-rate excerpt should build');
+  assert.equal(h.audios[0].length,48000,'destination passage frame count');
+  const output=h.audios[0].getChannelData(0);
+  assert(Math.abs(output[24000]-.5)<.005,'converted MP3 must contribute at nonzero source offset');
+  assert(Math.abs(output[0]-.5)<.005,'converted MP3 must remain start-aligned');
+  h.el('stemBits').value='32';
+  h.el('stemExport').fire('click');
+  assert(h.downloaded.at(-1).endsWith('.wav'),'mixed-rate excerpt supports float WAV export');
+}
 async function flush(){
   for(let i=0;i<7;i++)await new Promise(resolve=>setImmediate(resolve));
 }
 (async()=>{
+  await mixedRateExcerptRegression();
   const h=harness([fakeStem('Lead Vocals',.2),fakeStem('Drums',.3)]);
   await h.ui.open({name:'Synthetic Stems.zip',size:1234});
   assert.equal(h.el('stemList').children.length,2,'two stem cards');
