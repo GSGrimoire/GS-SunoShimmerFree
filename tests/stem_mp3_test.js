@@ -41,6 +41,17 @@ frames.forEach((f,i)=>bytes.set(f,i*frameSize));
   assert.equal(indexed.sourceFrames,40*1152);
   assert.equal(indexed.frames[1].offset,frameSize);
   assert.equal(indexed.frames[1].sampleStart,1152);
+  // Offline indexing must not claim exact sample timing when the encoder
+  // advertises gapless delay/padding through Xing or Info.
+  for (const marker of ['Xing','Info']) {
+    const tagged=bytes.slice();
+    tagged.set(Buffer.from(marker),36); // MPEG-1 stereo side-info ends at byte 36
+    await assert.rejects(Decoder.indexFrames(tagged),/Xing\/Info encoder timing metadata/);
+  }
+  // Header bytes outside the first frame are not gapless metadata.
+  const ordinary=bytes.slice();
+  ordinary.set(Buffer.from('Xing'),frameSize+36);
+  assert.equal((await Decoder.indexFrames(ordinary)).frames.length,40);
   const invalid=bytes.slice();
   invalid[4]=1; // first frame claims a 2-byte backward dependency
   await assert.rejects(Decoder.indexFrames(invalid),/unavailable bit-reservoir/);
