@@ -378,7 +378,7 @@
     if (stem.wav) {
       data = readWav(bytes);
     } else if (clipEnd > clipStart && root.SunoStemMp3 && root.AudioDecoder && root.EncodedAudioChunk &&
-        (!targetRate || targetRate === sniffMp3Rate(bytes))) {
+        (!targetRate || targetRate === sniffMp3Rate(bytes) || $('stemAllowMismatch').checked)) {
       var decodeAbort = new AbortController();
       data = await awaitSource(root.SunoStemMp3.decodePassage(bytes,clipStart,clipEnd,decodeAbort.signal),
         gen,decodeAbort);
@@ -412,7 +412,16 @@
         throw new Error(stem.name + ' uses ' + data.sr + ' Hz, mix is ' + targetRate +
           ' Hz. Enable explicit sample-rate conversion to proceed.');
       if (!Resample) throw new Error('Band-limited stem converter unavailable.');
-      data.channels = Resample.resample(data.channels, data.sr, targetRate);
+      // An excerpt's origin and full-source duration are measured in the
+      // same frame domain as its channels after sample-rate conversion.
+      // Otherwise build() re-clips an already-excerpted buffer at an absolute
+      // source offset, silently removing a mixed-rate stem.
+      var originalSampleRate = data.sr;
+      data.channels = Resample.resample(data.channels, originalSampleRate, targetRate);
+      if (data.passageStartFrame !== undefined)
+        data.passageStartFrame = Math.round(data.passageStartFrame * targetRate / originalSampleRate);
+      if (data.sourceFrames !== undefined)
+        data.sourceFrames = Math.round(data.sourceFrames * targetRate / originalSampleRate);
       data.sr = targetRate;
     }
     return data;
