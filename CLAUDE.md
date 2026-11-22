@@ -1,7 +1,7 @@
 # Claude instructions for SunoShimmerFree
 
-Read [AGENTS.md](AGENTS.md) and follow the shared project rules. Then read [HANDOFF.md](HANDOFF.md), [docs/STUDIO_PRODUCT_PLAN.md](docs/STUDIO_PRODUCT_PLAN.md) and [docs/SSF_AGENT_GATE.md](docs/SSF_AGENT_GATE.md).
+Read [AGENTS.md](AGENTS.md), [HANDOFF.md](HANDOFF.md), [docs/STUDIO_PRODUCT_PLAN.md](docs/STUDIO_PRODUCT_PLAN.md), [docs/SSF_AGENT_GATE.md](docs/SSF_AGENT_GATE.md), and [live coordination issue #18](https://github.com/GSGrimoire/GS-SunoShimmerFree/issues/18). Current owner-approved milestone A is manual, excerpt-only Multi-Stem Preview, not a full studio release.
 
-If assigned independent reviewer, do not modify the code you are reviewing, do not inherit an author's acceptance claims, and pin verdict to the current immutable commit. Do not treat GitHub access through the same login as a distinct formal reviewer identity.
+If assigned independent reviewer, use a distinct session and inspect the exact current base/head and affected callers. Do not modify the code being reviewed or inherit author acceptance claims. Shared GitHub credentials do not create a distinct formal approval identity. Browser, memory and real-audio listening require a named browser-capable executor or owner fallback.
 
-Never claim an autonomous scheduler, merger or deployed studio exists unless directly verified.
+Never claim a scheduler, approval, merger, deployed studio or release gate exists or passed without direct evidence. No fixed delivery deadline overrides safety gates.
