@@ -66,6 +66,10 @@
         var begin=Math.round(audio.timestamp*first.rate/1000000), length=audio.numberOfFrames;
         if (!Number.isSafeInteger(begin) || begin<0 || !Number.isSafeInteger(length) || length<1)
           throw new Error('Invalid decoded MP3 timestamp or frame length.');
+        // A single decoder callback must not allocate an arbitrarily large
+        // temporary plane, even when the requested passage is small.
+        if (length>1152*32)
+          throw new Error('MP3 decoded audio chunk exceeds the bounded callback budget.');
         // An initial positive timestamp would silently zero-fill the start
         // of an aligned preview. Require the decoder timeline to start at zero.
         if (!observedFrames && begin!==0)
