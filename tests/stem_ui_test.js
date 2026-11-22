@@ -185,7 +185,7 @@ async function flush(){
     'interface must disclose compressed entry memory exposure');
   assert.match(h.el('stemWorkspace')._innerHTML,/Native decoder memory is not measured/,
     'interface must not imply native decoder peak memory is bounded');
-  assert.match(h.el('stemWorkspace')._innerHTML,/late passages use a bounded indexed seek with reservoir-reset pre-roll/,
+  assert.match(h.el('stemWorkspace')._innerHTML,/late passages requiring indexed seeking are rejected until real-browser sample-parity verification is complete/,
     'interface must disclose late MP3 passage limitation');
   assert.doesNotMatch(h.el('stemWorkspace')._innerHTML,/MP3s are still decoded in full/,
     'interface must not retain obsolete full-source decoding claim');
