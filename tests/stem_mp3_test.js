@@ -115,7 +115,8 @@ await (async()=>{
   const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
   const mp3='<script src="stem-mp3.js"></script>';
   const resample='<script src="stem-resample.js"></script>';
-  assert(html.includes(mp3+'\n'+resample) || html.includes(mp3+'\r\n'+resample),\n    'script tags must be separated by an actual LF or CRLF newline');
+  assert(html.includes(mp3+'\n'+resample) || html.includes(mp3+'\r\n'+resample),
+    'script tags must be separated by an actual LF or CRLF newline');
   assert(!html.includes(mp3+String.fromCharCode(92)+'n'+resample),'literal escaped newline is invalid');
   assert.equal(html.split(mp3).length-1,1);
   assert.equal(html.split(resample).length-1,1);
