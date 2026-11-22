@@ -101,26 +101,26 @@ await (async()=>{
   }
   assert.equal(probes,0,'invalid frame boundaries must not probe browser codec');
   assert.equal(constructed,0,'invalid frame boundaries must not allocate decoder');
-  // Late seeks must be refused before codec probing or decoder allocation,
-  // including when a full eight-minute synthetic source is available.
-  for (const [start,end] of [[462,474],[108,109],[1e6,1e6+1]]) {
+  // A passage beyond the indexed source duration is refused before codec
+  // probing or decoder allocation.
+  for (const [start,end] of [[462,474],[1e6,1e6+1]]) {
     await assert.rejects(root.SunoStemMp3.decodePassage(bytes,start,end),
-      /indexed late seeking is disabled pending real-browser sample-parity verification/);
+      /exceeds source duration/);
   }
   const longFrameCount=Math.ceil(480*44100/1152);
   const longBytes=new Uint8Array(longFrameCount*frameSize);
   for(let i=0;i<longFrameCount;i++) longBytes.set(one,i*frameSize);
-  await assert.rejects(root.SunoStemMp3.decodePassage(longBytes,462,474),
-    /indexed late seeking is disabled pending real-browser sample-parity verification/);
-  assert.equal(probes,0,'late passage must not probe codec');
-  assert.equal(constructed,0,'late passage must not construct decoder');
+  await assert.rejects(root.SunoStemMp3.decodePassage(longBytes,479,481),
+    /exceeds source duration/);
+  assert.equal(probes,0,'out-of-range passage must not probe codec');
+  assert.equal(constructed,0,'out-of-range passage must not construct decoder');
   const aborted=new AbortController();
   aborted.abort();
   await assert.rejects(root.SunoStemMp3.decodePassage(longBytes,0,1,aborted.signal),
     /MP3 decoding cancelled/);
   assert.equal(probes,0,'pre-aborted request must not probe codec');
   assert.equal(constructed,0,'pre-aborted request must not construct decoder');
-  console.log('Unverified late MP3 seeking fails closed before decoder allocation.');
+  console.log('Out-of-range MP3 passages fail closed before decoder allocation.');
   console.log('Unsafe and sub-sample MP3 passage boundaries rejected before codec probing.');
 })();
 
@@ -130,7 +130,7 @@ class FakeDecoder {
   static async isConfigSupported(config) { return {supported:config.codec==='mp3',config}; }
   constructor(callbacks){this.callbacks=callbacks;this.pending=[];this.decodeQueueSize=0;this.flushes=0;this.closed=false;FakeDecoder.instances.push(this);}
   configure(options){this.config=options;}
-  decode(chunk){this.pending.push(chunk);}
+  decode(chunk){(this.decoded||(this.decoded=[])).push(chunk);this.pending.push(chunk);}
   async flush(){
     this.flushes++;
     for(const chunk of this.pending) {
@@ -159,16 +159,28 @@ await (async()=>{
     assert.equal(out.channels[1][2303],-.125);
     assert.equal(FakeDecoder.instances.at(-1).flushes,1,'MP3 reservoir must not be reset every 16 frames');
     assert(FakeDecoder.instances.at(-1).closed,'decoder must close');
-    // A fake decoder cannot validate real MP3 priming or bit-reservoir
-    // fidelity. Even when it echoes perfect timestamps, late playback must
-    // be rejected before decoder construction.
+    // Late passage: only the passage plus bounded pre-roll and guard frames
+    // are fed, with absolute timestamps. Synthetic frames carry no reservoir
+    // dependency, so pre-roll is the fixed safety margin (state frame + 2).
+    // Fake output cannot validate real MP3 audio; see
+    // tests/stem_mp3_ffmpeg_parity_test.js for decoder parity evidence.
     const count=Math.ceil(480*44100/1152);
     const long=new Uint8Array(count*frameSize);
     for(let i=0;i<count;i++) long.set(one,i*frameSize);
-    const before=FakeDecoder.instances.length;
-    await assert.rejects(root.SunoStemMp3.decodePassage(long,462,474),
-      /indexed late seeking is disabled pending real-browser sample-parity verification/);
-    assert.equal(FakeDecoder.instances.length,before,'no decoder on unverified late passage');
+    const late=await root.SunoStemMp3.decodePassage(long,462,474);
+    const lateDecoder=FakeDecoder.instances.at(-1);
+    const s=Math.round(462*44100),e=Math.round(474*44100),k=Math.floor(s/1152);
+    assert.equal(late.passageStartFrame,s);
+    assert.equal(late.channels[0].length,e-s);
+    assert.equal(late.sourceFrames,count*1152);
+    assert.equal(late.preRollFrames,3);
+    assert.equal(late.timeline,'mp3-decoder-output');
+    assert(late.channels[0].every(x=>x===.25),'late passage fully covered');
+    assert(late.channels[1].every(x=>x===-.125),'late passage fully covered');
+    assert.equal(lateDecoder.decoded.length,Math.floor((e-1)/1152)+2-(k-3)+1,'bounded feed');
+    assert.equal(lateDecoder.decoded[0].timestamp,Math.round((k-3)*1152*1000000/44100),
+      'first fed frame is the planned pre-roll start, on the absolute timeline');
+    assert(lateDecoder.closed,'decoder must close');
     for (const tag of ['Xing','Info']) {
       const tagged=bytes.slice();
       tagged.set(Buffer.from(tag),36); // MPEG-1 stereo: 4-byte header + 32-byte side information
@@ -201,6 +213,23 @@ await (async()=>{
     {self:shiftedRoot,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
   await assert.rejects(shiftedRoot.SunoStemMp3.decodePassage(bytes,0,.1),/omitted initial audio frames/);
   assert(MissingInitialFrameDecoder.instances.at(-1).closed,'decoder must close on missing initial frames');
+  // Late passage: output may begin inside the discarded pre-roll (a decoder
+  // can drop a frame whose reservoir was never fed), but never after the
+  // first kept frame, which would zero-fill the start of the passage.
+  {
+    const n=Math.ceil(480*44100/1152), long=new Uint8Array(n*frameSize);
+    for(let i=0;i<n;i++) long.set(one,i*frameSize);
+    const dropping=(drop)=>class extends FakeDecoder {
+      decode(chunk){this.seen=(this.seen||0)+1;if(this.seen>drop)super.decode(chunk);}
+    };
+    const load=(D)=>{const r={AudioDecoder:D,EncodedAudioChunk:FakeChunk};
+      vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+        {self:r,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});return r.SunoStemMp3;};
+    const ok=await load(dropping(1)).decodePassage(long,462,474);
+    assert(ok.channels[0].every(x=>x===.25),'pre-roll drop still covers passage');
+    await assert.rejects(load(dropping(4)).decodePassage(long,462,474),/omitted initial audio frames/);
+    console.log('Late-passage pre-roll drop accepted; kept-region omission rejected.');
+  }
   // A timestamp hole must fail instead of silently padding the output.
   class GappedDecoder extends FakeDecoder {
     decode(chunk) {
@@ -218,6 +247,35 @@ await (async()=>{
   assert(GappedDecoder.instances.at(-1).closed,'decoder must close on timestamp gap');
   console.log('Synthetic decoder timestamp and single-flush tests passed; real WebCodecs remains unverified.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+{
+  // Seek planner: frame k-1 must decode correctly, so its whole bit-reservoir
+  // span is fed, plus a two-frame margin. 32 kbit/s 48 kHz frames have a
+  // 60-byte payload, so a 511-byte back-reference spans nine frames.
+  // As indexFrames guarantees, a frame never references bytes before audio.
+  const mk=(n,payload,back)=>({sourceFrames:n*1152,
+    frames:Array.from({length:n},(_,i)=>({payload,mainDataBegin:Math.min(back,i*payload)}))});
+  const lowRate=mk(1000,60,511);
+  const p=Decoder.planSeek(lowRate,500*1152,510*1152);
+  assert.equal(p.keepFrame,500);
+  assert.equal(p.feedStart,499-9-2,'reservoir of frame k-1 plus margin');
+  assert.equal(p.lastFrame,511);
+  assert.equal(p.preRollFrames,500-488);
+  const none=Decoder.planSeek(mk(1000,400,0),500*1152+7,500*1152+8);
+  assert.equal(none.feedStart,499-2);
+  // Near the start the plan clamps to frame 0 instead of failing.
+  assert.equal(Decoder.planSeek(lowRate,3*1152,4*1152).feedStart,0);
+  assert.equal(Decoder.planSeek(lowRate,0,1).feedStart,0);
+  // End guard never runs past the last frame.
+  assert.equal(Decoder.planSeek(lowRate,999*1152,1000*1152).lastFrame,999);
+  // An unresolvable reservoir at a planned seek fails closed.
+  const broken={sourceFrames:10*1152,frames:Array.from({length:10},()=>({payload:10,mainDataBegin:511}))};
+  assert.throws(()=>Decoder.planSeek(broken,5*1152,6*1152),/unavailable bit-reservoir/);
+  assert.throws(()=>Decoder.planSeek(lowRate,999*1152,1000*1152+1),/exceeds source duration/);
+  assert.throws(()=>Decoder.planSeek(lowRate,5,5),/valid sample-frame interval/);
+  assert.throws(()=>Decoder.planSeek(lowRate,-1,5),/valid sample-frame interval/);
+  console.log('Indexed MP3 seek planner reservoir, margin and boundary tests passed.');
+}
 
 {
   const fs=require('node:fs'),path=require('node:path');

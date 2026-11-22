@@ -185,8 +185,10 @@ async function flush(){
     'interface must disclose compressed entry memory exposure');
   assert.match(h.el('stemWorkspace')._innerHTML,/Native decoder memory is not measured/,
     'interface must not imply native decoder peak memory is bounded');
-  assert.match(h.el('stemWorkspace')._innerHTML,/late passages requiring indexed seeking are rejected until real-browser sample-parity verification is complete/,
-    'interface must disclose late MP3 passage limitation');
+  assert.match(h.el('stemWorkspace')._innerHTML,/indexed seeking with bit-reservoir pre-roll; seek parity is checked offline against FFmpeg, not yet verified in each browser/,
+    'interface must disclose MP3 seek verification status');
+  assert.match(h.el('stemWorkspace')._innerHTML,/encoder delay is not removed, identically for every MP3 stem/,
+    'interface must disclose MP3 decoder-timeline assumption');
   assert.doesNotMatch(h.el('stemWorkspace')._innerHTML,/MP3s are still decoded in full/,
     'interface must not retain obsolete full-source decoding claim');
   assert.equal(h.el('stemList').children.length,2,'two stem cards');
