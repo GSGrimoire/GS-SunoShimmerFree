@@ -39,6 +39,16 @@
       throw new Error('MP3 compressed source exceeds the 64 MiB scan budget.');
     var offset=startOfFrames(bytes), first=header(bytes,offset);
     if (!first) throw new Error('Unsupported MP3 framing: MPEG-1 Layer III is required.');
+    // A Xing/Info first frame may carry encoder delay and end padding.
+    // Its nominal frame count cannot establish a gapless sample timeline.
+    // Keep offline indexing consistent with decodePassage's fail-closed rule.
+    var sideInfo=first.channels===1?17:32;
+    var xingAt=offset+4+sideInfo+((bytes[offset+1]&1)?0:2);
+    if (xingAt+4<=offset+first.size && xingAt+4<=bytes.length) {
+      var marker=String.fromCharCode.apply(null,bytes.subarray(xingAt,xingAt+4));
+      if (marker==='Xing' || marker==='Info')
+        throw new Error('MP3 Xing/Info encoder timing metadata is not supported for frame-exact indexing.');
+    }
     var entries=[], maxFrames=131072;
     while(offset<bytes.length) {
       if (signal && signal.aborted) throw new Error('MP3 indexing cancelled.');
