@@ -1,0 +1,32 @@
+name: DOM injection sink regression
+on:
+  pull_request:
+    paths:
+      - 'app.js'
+      - 'engine.js'
+      - 'edit.js'
+      - 'wav.js'
+      - 'tests/security/no-new-dom-sinks.test.cjs'
+      - '.github/workflows/dom-sink-regression.yml'
+  push:
+    paths:
+      - 'app.js'
+      - 'engine.js'
+      - 'edit.js'
+      - 'wav.js'
+      - 'tests/security/no-new-dom-sinks.test.cjs'
+      - '.github/workflows/dom-sink-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dom-sinks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/security/no-new-dom-sinks.test.cjs
