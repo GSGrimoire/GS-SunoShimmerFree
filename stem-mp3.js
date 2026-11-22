@@ -54,7 +54,6 @@
     var frames=end-start, totalBytes=frames*first.channels*4;
     if (!Number.isSafeInteger(totalBytes) || totalBytes>96*1048576)
       throw new Error('MP3 passage exceeds the 96 MiB decoded output budget.');
-    var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
     // Browser implementations differ. A constructor existing does not prove
     // MPEG-1 Layer III support; reject unsupported configurations before
     // allocating output planes or feeding compressed user media.
@@ -65,6 +64,7 @@
     if (!support || support.supported !== true)
       throw new Error('Browser WebCodecs MP3 decoder configuration is unsupported.');
     if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
+    var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
     var decoder, failure=null, frameNumber=0, count=0;
     var decodedFrames=0, observedFrames=0, lastEnd=0;
     function active() { if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.'); }
