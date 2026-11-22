@@ -60,6 +60,65 @@
     return { sampleRate: fmt.sr, channels: chans, bits: fmt.bits, float: isFloat };
   }
 
+  // Studio-only bounded passage reader. Validate the entire source layout before
+  // allocating even a temporary excerpt; the legacy full-file reader remains
+  // unchanged for production single-track callers.
+  function decodeWavPassage(buf, startSeconds, endSeconds, maxBytes) {
+    var dv=new DataView(buf), len=buf.byteLength;
+    function tag(o){return String.fromCharCode(dv.getUint8(o),dv.getUint8(o+1),dv.getUint8(o+2),dv.getUint8(o+3));}
+    if(len<12||tag(0)!=='RIFF'||tag(8)!=='WAVE') throw new Error('Invalid WAV RIFF header.');
+    var o=12,fmt=null,off=-1,size=0;
+    while(o+8<=len){
+      var id=tag(o),n=dv.getUint32(o+4,true),body=o+8;
+      if(n>len-body) throw new Error('Truncated WAV chunk.');
+      if(id==='fmt '){
+        if(n<16) throw new Error('Truncated WAV format.');
+        fmt={code:dv.getUint16(body,true),ch:dv.getUint16(body+2,true),
+          sr:dv.getUint32(body+4,true),align:dv.getUint16(body+12,true),
+          bits:dv.getUint16(body+14,true)};
+        if(fmt.code===65534){
+          if(n<40) throw new Error('Invalid extensible WAV format.');
+          fmt.code=dv.getUint16(body+24,true);
+        }
+      }
+      if(id==='data'){off=body;size=n;break;}
+      o=body+n+(n&1);
+    }
+    if(!fmt||off<0) throw new Error('WAV format or data chunk missing.');
+    if(fmt.ch<1||fmt.ch>2||!Number.isSafeInteger(fmt.sr)||fmt.sr<1)
+      throw new Error('Unsupported WAV channels or sample rate.');
+    var valid=(fmt.code===1&&[8,16,24,32].includes(fmt.bits))||
+      (fmt.code===3&&[32,64].includes(fmt.bits));
+    var stride=fmt.ch*fmt.bits/8;
+    if(!valid||fmt.align!==stride||size%stride)
+      throw new Error('Unsupported or unaligned WAV sample format.');
+    var sourceFrames=size/stride;
+    if(!Number.isSafeInteger(sourceFrames)||!Number.isFinite(startSeconds)||
+       !Number.isFinite(endSeconds)||startSeconds<0||
+       (endSeconds!==0&&endSeconds<=startSeconds))
+      throw new Error('Invalid WAV passage boundaries.');
+    var start=Math.round(startSeconds*fmt.sr);
+    var end=endSeconds===0?sourceFrames:Math.round(endSeconds*fmt.sr);
+    var count=end-start, decoded=count*fmt.ch*4, raw=count*stride;
+    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||
+       start>=sourceFrames||end>sourceFrames||count<1||
+       !Number.isSafeInteger(decoded)||decoded>maxBytes||
+       !Number.isSafeInteger(raw)||raw+44>maxBytes)
+      throw new Error('WAV passage exceeds source or memory budget.');
+    var cropped=new ArrayBuffer(44+raw),out=new DataView(cropped);
+    function writeTag(at,t){for(var k=0;k<4;k++)out.setUint8(at+k,t.charCodeAt(k));}
+    writeTag(0,'RIFF');out.setUint32(4,36+raw,true);writeTag(8,'WAVE');
+    writeTag(12,'fmt ');out.setUint32(16,16,true);
+    out.setUint16(20,fmt.code,true);out.setUint16(22,fmt.ch,true);
+    out.setUint32(24,fmt.sr,true);out.setUint32(28,fmt.sr*stride,true);
+    out.setUint16(32,stride,true);out.setUint16(34,fmt.bits,true);
+    writeTag(36,'data');out.setUint32(40,raw,true);
+    new Uint8Array(cropped,44).set(new Uint8Array(buf,off+start*stride,raw));
+    var result=decodeWav(cropped);
+    result.passageStartFrame=start;result.sourceFrames=sourceFrames;
+    return result;
+  }
+
   // bits: 16, 24 or 32 (32 = IEEE float)
   function encodeWav(chans, sampleRate, bits) {
     if ([16, 24, 32].indexOf(bits) < 0) throw new Error('Output bit depth must be 16, 24 or 32.');
@@ -90,7 +149,7 @@
     return buf;
   }
 
-  var api = { decodeWav: decodeWav, encodeWav: encodeWav };
+  var api = { decodeWav: decodeWav, decodeWavPassage: decodeWavPassage, encodeWav: encodeWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.WavCodec = api;
 })(typeof self !== 'undefined' ? self : this);
