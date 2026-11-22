@@ -491,7 +491,11 @@
     }
     var from = Math.round(edit.from * data.sr) - clipStartFrame,
       to = Math.round(edit.to * data.sr) - clipStartFrame,
-      fadeFrames = Math.max(1, Math.round(0.020 * data.sr));
+      // Preserve continuous boundaries while reaching full reduction in short passages.
+      fadeFrames = Math.max(1, Math.min(Math.round(0.020 * data.sr),
+        Math.floor((to - from) / 2)));
+    if (to - from < 2)
+      throw new Error(stem.name + ': passage attenuation requires at least two audio sample frames for continuous fades.');
     for (var j = 0; j < n; j++) {
       // A 20 ms fade on both boundaries, anchored in the original timeline.
       var depth = (j > from && j < to) ?
