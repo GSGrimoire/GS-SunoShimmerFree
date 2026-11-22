@@ -263,6 +263,28 @@ async function flush(){
     m.ui.close();
   }
 
+  // Short 100%-mute windows must reach full attenuation at their midpoint.
+  // A 20 ms fixed fade on both sides would never reach zero for these.
+  for(const milliseconds of [10,20,40]) {
+    const w=harness([fakeStem('Short window',.2,48000,1)]);
+    await w.ui.open({name:'Short window.zip',size:2000});
+    const start=.2, end=start+milliseconds/1000;
+    w.stems[0].passageStart=start;
+    w.stems[0].passageEnd=end;
+    w.stems[0].passageReduction=100;
+    w.el('stemBuild').fire('click');await flush();
+    assert.equal(w.el('stemExport').disabled,false,'short mute build must succeed');
+    const samples=w.audios.at(-1).getChannelData(0),
+      from=Math.round(start*48000),to=Math.round(end*48000),middle=(from+to)/2;
+    assert(Math.abs(samples[from]-.2)<1e-6,'start boundary continuous '+milliseconds);
+    assert(Math.abs(samples[to]-.2)<1e-6,'end boundary continuous '+milliseconds);
+    assert(Math.abs(samples[middle])<1e-6,'full mute at midpoint '+milliseconds);
+    assert(Math.abs(samples[from-1]-.2)<1e-6,'before start unchanged '+milliseconds);
+    assert(Math.abs(samples[to+1]-.2)<1e-6,'after end unchanged '+milliseconds);
+    assert(samples[from+1]<.2 && samples[from+1]>=0,'fade starts smoothly '+milliseconds);
+    w.ui.close();
+  }
+
   // A different WAV sample rate is rejected before silent resampling.
   const j=harness([fakeStem('First',.2,48000,1),fakeStem('Other',.3,44100,1)]);
   await j.ui.open({name:'Mismatch.zip',size:2000});
