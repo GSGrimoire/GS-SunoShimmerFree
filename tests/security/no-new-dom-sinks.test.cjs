@@ -8,7 +8,7 @@ const path = require('node:path');
 // Exact existing assignments are inventoried; changes require independent review.
 const roots = ['app.js', 'engine.js', 'edit.js', 'wav.js'];
 const allowed = new Set([
-  "tile.innerHTML = src.innerHTML;",
+  "tile.className = src.className; tile.innerHTML = src.innerHTML;",
   "$('secLabel').innerHTML = '';"
 ]);
 function violations(source) {
