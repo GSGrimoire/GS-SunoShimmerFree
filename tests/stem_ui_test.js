@@ -90,9 +90,11 @@ function harness(stems, options={}) {
     }
     terminate(){this.terminated=true;}
   }
-  let releaseHeldExtract=null, heldOnce=false, heldSignal=null;
+  let releaseHeldExtract=null, heldOnce=false, heldSignal=null, extractCalls=0;
   const archive={stems,file:{name:'Synthetic Stems.zip'},compressedBytes:2000,totalBytes:stems.reduce((sum,x)=>sum+x._file.byteLength,0),
     async extract(entry, signal){
+      extractCalls++;
+      if(options.rejectExtract) throw Error('Unexpected extraction before admission');
       const s=stems.find(x=>x.entry===entry);if(!s)throw Error('Missing synthetic entry');
       if(options.holdFirstExtract && !heldOnce) {
         heldOnce=true;
@@ -120,6 +122,7 @@ function harness(stems, options={}) {
   vm.runInNewContext(source,ctx,{timeout:5000,filename:'stem-ui.js'});
   const el=id=>{const e=nodes.get(id);assert(e,'Missing '+id);return e;};
   return {ui:root.SunoStemUI,el,nodes,stems,downloaded,audios,workers,
+    extractCalls(){return extractCalls;},
     releaseHeldExtract(){assert(releaseHeldExtract,'held extraction missing');releaseHeldExtract();},
     heldExtractionAborted(){return heldSignal && heldSignal.aborted;}};
 }
@@ -147,11 +150,33 @@ async function mixedFormatFailClosedRegression() {
     }
   }
 }
+async function mp3PreExtractionAdmissionRegression() {
+  for (const variant of ['oversized','unknown-size','no-codec','full-source']) {
+    const mp3=fakeStem('Admission gate',.2,44100,4);
+    mp3.wav=null;mp3.mp3=mp3.entry;mp3.format='MP3';
+    mp3._file=Uint8Array.of(255,251,144,0);
+    mp3.entry.size=variant==='oversized'?64*1048576+1:
+      variant==='unknown-size'?undefined:4;
+    const h=harness([mp3],{webCodecs:variant!=='no-codec',rejectExtract:true});
+    await h.ui.open({name:'Admission gate.zip',size:2000});
+    h.el('stemClipStart').value='0';
+    h.el('stemClipEnd').value=variant==='full-source'?'0':'0.2';
+    h.el('stemBuild').fire('click');await flush();
+    assert.match(h.el('stemStatus').textContent,
+      variant==='oversized'||variant==='unknown-size'?/64 MiB scan budget/:/finite selected passage and supported WebCodecs/,
+      variant+' must fail before extraction');
+    assert.equal(h.extractCalls(),0,variant+' must not materialize ZIP entry');
+    assert.equal(h.audios.length,0,'rejected MP3 must not publish preview');
+    assert.equal(h.el('stemExport').disabled,true,'rejected MP3 must not export');
+    h.ui.close();
+  }
+}
 async function flush(){
   for(let i=0;i<7;i++)await new Promise(resolve=>setImmediate(resolve));
 }
 (async()=>{
   await mixedFormatFailClosedRegression();
+  await mp3PreExtractionAdmissionRegression();
   const h=harness([fakeStem('Lead Vocals',.2),fakeStem('Drums',.3)]);
   await h.ui.open({name:'Synthetic Stems.zip',size:1234});
   assert.match(h.el('stemWorkspace')._innerHTML,/milestone A: 32-bit float WAV passage/,
