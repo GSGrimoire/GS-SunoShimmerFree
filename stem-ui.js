@@ -386,6 +386,7 @@
       // Native full-source decode allocates before its size can be checked.
       // Milestone A supports finite excerpts only, through bounded WebCodecs.
       throw new Error(stem.name + ': MP3 requires a finite selected passage and supported WebCodecs. Full-source or fallback decode is disabled to protect browser memory.');
+    }
     ensureFresh(gen);
     if (data.channels.length < 1 || data.channels.length > 2)
       throw new Error(stem.name + ' has more than two channels. Stereo/mono stems are supported.');
