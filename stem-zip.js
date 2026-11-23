@@ -114,7 +114,7 @@
       offset += 4;
       ensure(offset + size <= end, 'truncated ZIP extra field');
       if (id === 1) {
-        ensure(field < 0 && size === expected, 'invalid ZIP64 entry extra field');
+        // ZIP64 replacement values form an ordered prefix; later bytes are extensible.\n        ensure(field < 0 && size >= expected, 'invalid ZIP64 entry extra field');
         field = offset;
       }
       offset += size;
