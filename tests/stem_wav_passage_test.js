@@ -96,4 +96,31 @@ for(const [field,value] of [[22,0],[22,20],[34,12],[32,0],[24,0]]) {
   assert.throws(()=>Wav.decodeWavPassage(bytes.buffer,0,.1,1048576),/GUID/);
 }
 
+{
+  // Both ordinary IEEE float and extensible WAV must reject a contradictory
+  // nAvgBytesPerSec before allocating the excerpt. Preserve valid controls.
+  const ordinary=fixture(1),ordinaryView=new DataView(ordinary);
+  assert.equal(Wav.decodeWavPassage(ordinary,0,.1,1048576).channels[0].length,4800);
+  for(const badRate of [0,1,383999,384001,0xFFFFFFFF]) {
+    ordinaryView.setUint32(28,badRate,true);
+    assert.throws(()=>Wav.decodeWavPassage(ordinary,0,.1,1048576),/unaligned|format/);
+  }
+  ordinaryView.setUint32(28,384000,true);
+  const bytes=new Uint8Array(ordinary.byteLength+24);
+  bytes.set(new Uint8Array(ordinary,0,12));
+  bytes.set(new Uint8Array(ordinary,12,36),12);
+  bytes.set(new Uint8Array(ordinary,36),60);
+  const dv=new DataView(bytes.buffer);
+  dv.setUint32(4,bytes.byteLength-8,true);
+  dv.setUint32(16,40,true);
+  dv.setUint16(20,65534,true);
+  dv.setUint16(36,22,true);
+  dv.setUint16(38,32,true);
+  dv.setUint32(44,3,true);
+  bytes.set([0,0,16,0,128,0,0,170,0,56,155,113],48);
+  assert.equal(Wav.decodeWavPassage(bytes.buffer,0,.1,1048576).channels[0].length,4800);
+  dv.setUint32(28,0,true);
+  assert.throws(()=>Wav.decodeWavPassage(bytes.buffer,0,.1,1048576),/unaligned|format/);
+}
+
 console.log('Bounded WAV passage parity, late-window memory and hostile-header tests passed.');
