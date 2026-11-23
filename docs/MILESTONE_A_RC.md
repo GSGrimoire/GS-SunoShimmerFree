@@ -64,6 +64,7 @@ Known limits for the candidate (disclosed in the UI):
 
 - Every preview is a finite excerpt of at most 240 s, for WAV and MP3 alike; whole-song mixing and export are the follow-up (#48). The fields start at 0–30 s; if the first stem is shorter and the end is untouched, the whole stem is used.
 - Memory admission before anything is unpacked: WAV entries at most 256 MiB, MP3 entries at most 64 MiB, mix at most 96 MiB, and entry + estimated excerpt + mix at most 512 MiB. Before sample-rate conversion, decoded + converted + mix must also fit; the raw entry is released first. By construction the JavaScript-side peak stays below about 450 MiB per build.
+- The stem workspace exports 32-bit float WAV only (the format verified bit-identical to the preview). 16/24-bit WAV and MP3 stem exports are disabled until verified; the single-track tool's exports are unchanged.
 - A later stem that ends inside the selected passage is a length mismatch: refused unless the mismatch box is ticked, then padded with silence.
 - The whole compressed ZIP entry is held in memory during a build (about 10–20 MB per stem for the Viking set).
 - Native decoder memory is not measured by any automated check. Chrome's Task Manager reading (step 7) is the evidence.

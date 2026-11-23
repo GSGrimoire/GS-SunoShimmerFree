@@ -261,23 +261,36 @@
     return out;
   }
 
-  function loadFile(file) {
-    if (file && /\.zip$/i.test(file.name)) {
-      stopPlayback();
-      if (window.SunoStemUI) window.SunoStemUI.open(file);
-      else showError('ZIP import is unavailable in this build.');
-      return;
-    }
-    // Each file read/decoder may resolve after a later source has been selected.
-    // Invalidate *all* previously scheduled continuations before changing UI state.
-    var sourceGen = ++st.sourceGeneration;
+  // Every source selection, single track or stem ZIP, invalidates all pending
+  // single-track reads, decodes, cleaning, polish and exports first.
+  function invalidateSingleTrack() {
+    ++st.sourceGeneration;
     ++st.cleanGeneration;
     cancelExport();
     cancelPolish();
     hideError();
-    stopPlayback(); st.offset = 0;
+    stopPlayback();
     if (st.worker) { st.worker.terminate(); st.worker = null; }
     st.busy = false;
+  }
+
+  function loadFile(file) {
+    if (file && /\.zip$/i.test(file.name)) {
+      invalidateSingleTrack();
+      hideBusy();
+      if (!st.buffers.original) showUpload();
+      refreshDirty(); refreshPolish();
+      if (window.SunoStemUI) window.SunoStemUI.open(file);
+      else showError('ZIP import is unavailable in this build.');
+      return;
+    }
+    // A pending stem ZIP open must not reopen the workspace over this track.
+    if (window.SunoStemUI && window.SunoStemUI.close) window.SunoStemUI.close();
+    // Each file read/decoder may resolve after a later source has been selected.
+    // Invalidate *all* previously scheduled continuations before changing UI state.
+    invalidateSingleTrack();
+    var sourceGen = st.sourceGeneration;
+    st.offset = 0;
     st.buffers = { original: null, clean: null, polish: null, removed: null }; st.specs = {}; st.applied = null; st.everCleaned = false;
     st.polishApplied = null;
     st.peaks = {}; st.peakMax = {};

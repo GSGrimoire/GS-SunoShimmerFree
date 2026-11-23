@@ -13,7 +13,7 @@ function deferred() {let resolve,reject;const promise=new Promise((yes,no)=>{res
 function riff(marker) {const a=new Uint8Array(32);a.set([82,73,70,70],0);a[4]=marker;return a.buffer;}
 async function flush(){await new Promise(r=>setImmediate(r));await new Promise(r=>setImmediate(r));}
 function harness(){
- const workers=[],wavWrites=[],nodes=new Map(),radios={};
+ const workers=[],wavWrites=[],nodes=new Map(),radios={},stem={opens:[],closes:0};
  const canvas={
    setTransform:noop,clearRect:noop,fillRect:noop,beginPath:noop,moveTo:noop,lineTo:noop,
    quadraticCurveTo:noop,closePath:noop,arc:noop,fill:noop,stroke:noop,
@@ -81,6 +81,7 @@ function harness(){
  // index.html loads Sound Polish and loudness before app.js; so does this page.
  const window={ShimmerEngine:Engine,ShimmerEdit:Ed,WavCodec:Wav,AudioContext:AC,
    SunoPolish:require('../polish.js'),SunoLoudness:require('../loudness.js'),
+   SunoStemUI:{open(f){stem.opens.push(f.name);},close(){stem.closes++;}},
    addEventListener:noop,devicePixelRatio:1};
  const context={window,document,Worker,AudioBuffer:AB,Float32Array,Uint8Array,
    Uint8ClampedArray,ArrayBuffer,Blob,URL:{createObjectURL:()=> 'blob:test',revokeObjectURL:noop},
@@ -93,7 +94,7 @@ function harness(){
    job.emit({type:'done',clean:input.map(x=>x.slice()),
      removed:input.map(x=>new Float32Array(x.length)),report:{text:'test'}});
  }
- return {el,workers,wavWrites,last,finishClean};
+ return {el,workers,wavWrites,last,finishClean,stem};
 }
 (async()=>{
  const h=harness();
@@ -132,5 +133,40 @@ function harness(){
  assert.equal(h.el('songTitle').textContent,'Source-E');
  assert.equal(h.el('error').hidden,true,'old read failure must not affect new track');
  assert.equal(h.el('busy').hidden,false,'old read error must not hide current progress');
+ // Source switch to a stem ZIP (ChatGPT-2 HIGH, 23 Nov): a pending single
+ // track read, its decode and an active cleaning worker are invalidated
+ // before the ZIP workspace opens; late results never install audio.
+ {
+   const z=harness();
+   const slow=deferred();
+   z.el('file').files=[{name:'Song-A.wav',arrayBuffer:()=>slow.promise}];z.el('file').fire('change');
+   z.el('file').files=[{name:'Stems-B.zip',arrayBuffer:()=>{throw Error('ZIP must not be read by app.js');}}];
+   z.el('file').fire('change');
+   assert.deepEqual(z.stem.opens,['Stems-B.zip'],'ZIP routed to the stem workspace');
+   slow.resolve(riff(10));await flush();
+   assert.equal(z.workers.filter(w=>w.url==='worker.js').length,0,'late A read after ZIP must not start cleaning');
+   assert.equal(z.el('busy').hidden,true,'no stale single-track progress over the workspace');
+   // Active cleaning worker, then ZIP: worker terminated, stale done ignored.
+   z.el('file').files=[{name:'Song-C.wav',arrayBuffer:async()=>riff(30)}];z.el('file').fire('change');
+   await flush();
+   const c=z.last('worker.js');assert(c&&!c.terminated,'C is cleaning');
+   const closesBefore=z.stem.closes;
+   assert(closesBefore>=1,'a single-track selection closes any pending stem workspace open');
+   z.el('file').files=[{name:'Stems-D.zip'}];z.el('file').fire('change');
+   assert(c.terminated,'ZIP selection terminates the running cleaning worker');
+   finishSilently(c);
+   assert.equal(z.el('dlClean').hidden===false && z.wavWrites.length>0,false,'stale C result must not become exportable');
+   // ZIP then single track: the workspace is closed so a pending archive
+   // open cannot reappear over the new track.
+   const closes=z.stem.closes;
+   z.el('file').files=[{name:'Song-E.wav',arrayBuffer:async()=>riff(50)}];z.el('file').fire('change');
+   assert.equal(z.stem.closes,closes+1,'single-track selection closes the stem workspace');
+   await flush();
+   const e=z.last('worker.js');assert(e&&e!==c&&!e.terminated,'E cleans normally after ZIP');
+   assert(Math.abs(e.messages.at(-1).channels[0][0]-.5)<1e-6,'E worker gets E samples');
+   console.log('PASS source switch between single track and stem ZIP invalidates pending work both ways.');
+ }
+ function finishSilently(w){try{w.emit({type:'done',clean:[Float32Array.of(.9),Float32Array.of(.9)],
+   removed:[Float32Array.of(0),Float32Array.of(0)],report:{text:'stale'}});}catch(_){}}
  console.log('PASS production import generation regression: overlapping reads, stale worker, stale failures and WAV exports.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

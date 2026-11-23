@@ -13,6 +13,7 @@
   var MAX_WAV_ENTRY_BYTES = 256 * 1048576, MAX_MP3_ENTRY_BYTES = 64 * 1048576;
   var MAX_LIVE_BYTES = 512 * 1048576;
   var clipEndTouched = false;
+  var EXPORT_FORMATS = ['32'];
   function admit(label, bytes) {
     if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > MAX_LIVE_BYTES)
       throw new Error(label + ' would need about ' + (bytes / 1048576).toFixed(0) +
@@ -57,9 +58,8 @@
       '<label for="stemSeek">Playback position</label><input id="stemSeek" type="range" min="0" max="1000" step="1" value="0">',
       '<span id="stemTime">0:00 / 0:00</span></div>',
       '<div class="stem-build"><label for="stemBits">Download as (milestone A: 32-bit float WAV passage)</label>',
-      '<select id="stemBits"><option value="32">32-bit float WAV</option><option value="24">24-bit WAV</option>',
-      '<option value="16">16-bit WAV</option><option value="mp3-320">MP3 320 kilobits/s</option>',
-      '<option value="mp3-256">MP3 256 kilobits/s</option><option value="mp3-192">MP3 192 kilobits/s</option></select>',
+      // Milestone A ships only the format verified bit-identical to the preview.
+      '<select id="stemBits"><option value="32">32-bit float WAV</option></select>',
       '<button type="button" id="stemExport">Export previewed mix or stem</button></div>',
       '<p class="stem-note">Individual preview and export use the selected stem controls. A compiled mix sums enabled unmuted stems; Solo overrides Enable but not Mute.',
       ' Processing is sequential and can take time. A compiled mix is limited to 96 MiB. For long tracks, set a short preview passage first.',
@@ -156,6 +156,8 @@
     if ($('stemMixInfo')) $('stemMixInfo').textContent = 'Selection/settings changed: build a new mix.';
   }
   function close() {
+    // Also invalidates a pending open() even before the workspace was built.
+    if (!box) { generation++; return; }
     cancel(); clearPreview();
     current = null; box.hidden = true;
     document.body.classList.remove('has-stem-workspace');
@@ -743,6 +745,10 @@
   async function exportAudio() {
     if (!buffer || busy) return;
     var format=$('stemBits').value, isMp3=format.indexOf('mp3-')===0;
+    if (EXPORT_FORMATS.indexOf(format) < 0) {
+      status('This beta exports the previewed passage as 32-bit float WAV only. Other formats are not verified yet.', true);
+      return;
+    }
     var name=(current?current.file.name.replace(/\.zip$/i,''):'Stems')+' - '+audioLabel;
     name=nameSafe(name);
     var channels=Array.from({length:buffer.numberOfChannels},function(_,i){return buffer.getChannelData(i);});

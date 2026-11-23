@@ -280,10 +280,19 @@ async function flush(){
   h.el('stemBuild').fire('click');await flush();
   assert(Math.abs(h.audios.at(-1).getChannelData(0)[2]-(.2*Math.pow(10,6/20)))<1e-6,
     'individual stem gain controls mix level');
-  h.el('stemBits').value='mp3-320';
-  h.el('stemExport').fire('click');await flush();
-  assert(h.downloaded.at(-1).endsWith('.mp3'),'local background MP3 export');
-  assert(h.workers.some(w=>w.url==='export-worker.js'),'MP3 encoding uses existing background worker');
+  // Milestone A exports only the 32-bit float WAV verified against the
+  // preview; other formats are refused without starting an encoder.
+  assert.doesNotMatch(h.el('stemWorkspace')._innerHTML,/<option value="(24|16|mp3-[0-9]+)"/,
+    'only 32-bit float WAV is offered');
+  for (const fmt of ['mp3-320','24','16']) {
+    const downloads=h.downloaded.length, encoders=h.workers.filter(w=>w.url==='export-worker.js').length;
+    h.el('stemBits').value=fmt;
+    h.el('stemExport').fire('click');await flush();
+    assert.match(h.el('stemStatus').textContent,/32-bit float WAV only/,fmt+' refused with explanation');
+    assert.equal(h.downloaded.length,downloads,fmt+' must not download');
+    assert.equal(h.workers.filter(w=>w.url==='export-worker.js').length,encoders,fmt+' must not start an encoder');
+  }
+  h.el('stemBits').value='32';
 
   h.stems[0].volume=0;h.stems[0].polish=true;h.stems[0].clarity=50;
   h.el('stemBuild').fire('click');await flush();
@@ -423,21 +432,6 @@ async function flush(){
     'late result cannot replace fresh audio');
   k.ui.close();
 
-  // MP3 export has no pending Promise, but cancelling a held encoder must
-  // likewise ignore a synthetic late result and never trigger a download.
-  const q=harness([fakeStem('Export',.2)],{holdMp3Export:true});
-  await q.ui.open({name:'Export.zip',size:1234});
-  q.el('stemBuild').fire('click');await flush();
-  q.el('stemBits').value='mp3-320';
-  q.el('stemExport').fire('click');await flush();
-  const encoder=q.workers.find(w=>w.url==='export-worker.js');
-  assert(encoder && !encoder.terminated);
-  q.el('stemStop').fire('click');await flush();
-  assert(encoder.terminated,'cancelled encoder is terminated');
-  encoder.onmessage({data:{type:'done',bytes:Uint8Array.of(4,5),peak:.2}});
-  await flush();
-  assert.equal(q.downloaded.length,0,'stale cancelled MP3 job must not download');
-  q.ui.close();
 
   // Short 100%-mute windows must reach full attenuation at their midpoint.
   // A 20 ms fixed fade on both sides would never reach zero for these.
