@@ -83,6 +83,13 @@ for(const [field,value] of [[22,0],[22,20],[34,12],[32,0],[24,0]]) {
   dv.setUint32(44,3,true);
   bytes.set([0,0,16,0,128,0,0,170,0,56,155,113],48);
   assert.equal(Wav.decodeWavPassage(bytes.buffer,0,.1,1048576).channels[0].length,4800);
+  // The canonical 40-byte extensible format has exactly 22 extension bytes.
+  // Contradictory lengths must not be silently accepted.
+  for(const cbSize of [0,21,23,65535]) {
+    dv.setUint16(36,cbSize,true);
+    assert.throws(()=>Wav.decodeWavPassage(bytes.buffer,0,.1,1048576),/extensible/);
+  }
+  dv.setUint16(36,22,true);
   bytes[55]^=1;
   assert.throws(()=>Wav.decodeWavPassage(bytes.buffer,0,.1,1048576),/GUID/);
   bytes[55]^=1;dv.setUint32(44,0x10003,true);

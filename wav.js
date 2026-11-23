@@ -86,9 +86,9 @@
           sr:dv.getUint32(body+4,true),align:dv.getUint16(body+12,true),
           bits:dv.getUint16(body+14,true)};
         if(fmt.code===65534){
-          if(n<40||dv.getUint16(body+16,true)<22)
+          if(n<40||dv.getUint16(body+16,true)!==22)
             throw new Error('Invalid extensible WAV format.');
-          // KSDATAFORMAT_SUBTYPE_PCM/IEEE_FLOAT are the complete standard GUIDs.
+          // This reader accepts only the canonical 22-byte extension.\n          // KSDATAFORMAT_SUBTYPE_PCM/IEEE_FLOAT are the complete standard GUIDs.
           var subtype=dv.getUint32(body+24,true);
           var guid=[0,0,16,0,128,0,0,170,0,56,155,113];
           for(var gi=0;gi<12;gi++)
