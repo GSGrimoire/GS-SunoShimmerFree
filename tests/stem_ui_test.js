@@ -176,6 +176,22 @@ async function mp3PreExtractionAdmissionRegression() {
 // ChatGPT-2 finding 7098400393): no "0 = whole song", a 240 s cap and an
 // unpack budget, all enforced before any ZIP entry is extracted.
 async function finiteExcerptAdmissionRegression() {
+  // Indexed MP3 frame admission is tighter than the WAV-only 240 s ceiling.
+  // A refused decoder plan must give actionable guidance and never export.
+  {
+    const mp3=fakeStem('Indexed',.2,48000,4);
+    mp3.wav=null;mp3.mp3=mp3.entry;mp3.format='MP3';
+    mp3._file=Uint8Array.of(255,251,144,0);mp3.entry.size=4;
+    const h=harness([mp3],{webCodecs:true,mp3BudgetReject:true});
+    await h.ui.open({name:'Indexed limit.zip',size:2000});
+    assert.match(h.el('stemWorkspace')._innerHTML,/MP3 indexed decoding has a shorter limit/);
+    h.el('stemClipStart').value='0';h.el('stemClipEnd').value='90';
+    h.el('stemBuild').fire('click');await flush();
+    assert.match(h.el('stemStatus').textContent,/Choose a shorter excerpt \(start with 90 seconds or less\)/);
+    assert.equal(h.audios.length,0,'rejected indexed MP3 has no preview');
+    assert.equal(h.el('stemExport').disabled,true,'rejected indexed MP3 cannot export');
+    h.ui.close();
+  }
   // Default end is 30 s; an untouched default on a shorter first stem
   // previews the whole stem and shows the end it used.
   {
