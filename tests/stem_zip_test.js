@@ -44,7 +44,13 @@ function zip(entries, options = {}) {
       descriptor.writeBigUInt64LE(BigInt(content.length), 16);
       chunks.push(descriptor);
     }
-    const centralExtra = wide ? zip64Extra(content.length, deflated.length, offset) : Buffer.alloc(0);
+    let centralExtra = wide ? zip64Extra(content.length, deflated.length, offset) : Buffer.alloc(0);
+    if (wide && item.zip64Padding) {
+      // Extra bytes belong to the same ZIP64 field, not a second field.
+      const padding = Buffer.alloc(item.zip64Padding, 0xa5);
+      centralExtra.writeUInt16LE(centralExtra.readUInt16LE(2) + padding.length, 2);
+      centralExtra = Buffer.concat([centralExtra, padding]);
+    }
     const dir=Buffer.alloc(46+name.length+centralExtra.length);
     writeUInt(dir,0,0x02014b50,4);
     writeUInt(dir,4,item.symlink?0x300+version:version,2);
@@ -152,6 +158,15 @@ async function throwsZip(f,regex,description) {
     for (const [i,stem] of archive.stems.entries())
       assert.equal(Buffer.from(await archive.extract(stem.entry)).toString(),wideStems[i].data);
   }
+  const padded = await Zip.open(zip([
+    {name:'Padded.mp3',data:'synthetic padded stem',zip64Padding:8},
+    {name:'Plain.wav',data:'synthetic plain stem',method:0}
+  ],{zip64:true}));
+  assert.equal(padded.stems.length,2,'ZIP64 fields may carry bounded extension bytes');
+  assert.equal(Buffer.from(await padded.extract(padded.stems[0].entry)).toString(),
+    'synthetic padded stem','extended ZIP64 field must preserve payload identity');
+  assert.equal(Buffer.from(await padded.extract(padded.stems[1].entry)).toString(),
+    'synthetic plain stem','later directory entries remain aligned');
   const zip64 = Buffer.from(await wide.arrayBuffer());
   const end = zip64.length-22, locator = end-20;
   const record = Number(zip64.readBigUInt64LE(locator+8));
@@ -183,6 +198,7 @@ async function throwsZip(f,regex,description) {
     ['directory outside the archive', b=>b.writeBigUInt64LE(BigInt(zip64.length),record+48), /directory bounds/],
     ['missing entry extra field', b=>b.writeUInt16LE(2,extra), /missing ZIP64 entry extra/],
     ['truncated entry extra field', b=>b.writeUInt16LE(25,extra+2), /truncated ZIP extra/],
+    ['short ZIP64 replacement prefix', b=>b.writeUInt16LE(23,extra+2), /invalid ZIP64|truncated ZIP extra/],
     ['entry size overflows 32 bits', b=>b.writeBigUInt64LE(1n<<32n,extra+4), /ZIP64 value exceeds/],
     ['entry exceeds cap', b=>b.writeBigUInt64LE(BigInt(Zip.MAX_ENTRY+1),extra+4), /160 MiB/],
     ['local header overlaps the directory', b=>b.writeBigUInt64LE(BigInt(directory),extra+20), /local entry overlaps/]
