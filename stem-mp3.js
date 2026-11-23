@@ -159,7 +159,25 @@
     if (typeof root.AudioDecoder.isConfigSupported !== 'function')
       throw new Error('Browser cannot verify WebCodecs MP3 decoder support.');
     var config={codec:'mp3',sampleRate:first.rate,numberOfChannels:first.channels};
-    var support=await root.AudioDecoder.isConfigSupported(config);
+    // A browser codec probe may never settle. Cancellation must release the
+    // caller even before a decoder has been constructed.
+    var support=await new Promise(function(resolve,reject) {
+      var settled=false;
+      function finish(err,value) {
+        if (settled) return;
+        settled=true;
+        if (signal) signal.removeEventListener('abort',onAbort);
+        if (err) reject(err); else resolve(value);
+      }
+      function onAbort() { finish(new Error('MP3 decoding cancelled.')); }
+      if (signal) {
+        if (signal.aborted) { onAbort(); return; }
+        signal.addEventListener('abort',onAbort,{once:true});
+      }
+      try { Promise.resolve(root.AudioDecoder.isConfigSupported(config)).then(
+        function(value){finish(null,value);},function(err){finish(err);}); }
+      catch(err) { finish(err); }
+    });
     if (!support || support.supported !== true)
       throw new Error('Browser WebCodecs MP3 decoder configuration is unsupported.');
     if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
