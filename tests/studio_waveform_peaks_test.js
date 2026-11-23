@@ -29,6 +29,16 @@ test('reject gaps, repeats and malformed samples', () => {
   assert.throws(() => appendWaveformPeaks(s, Float32Array.of(2,0), 0), RangeError);
   assert.throws(() => appendWaveformPeaks(s, Float32Array.of(0), 0), TypeError);
 });
+test('empty chunks cannot bypass frame progress or repeat an offset', () => {
+  const initial = createWaveformPeaks({ channels: 2, framesPerBucket: 2 });
+  assert.throws(() => appendWaveformPeaks(initial, new Float32Array(0), 0), RangeError);
+  const next = appendWaveformPeaks(initial, Float32Array.of(0.25, -0.5), 0);
+  assert.equal(next.nextFrame, 1);
+  assert.throws(() => appendWaveformPeaks(next, new Float32Array(0), 1), RangeError);
+  assert.throws(() => appendWaveformPeaks(next, Float32Array.of(0, 0), 0), RangeError);
+  assert.equal(next.nextFrame, 1);
+  assert.deepEqual(finishWaveformPeaks(next).buckets, [{ min: -0.5, max: 0.25 }]);
+});
 test('capacity fails before any partial accumulation', () => {
   const s = createWaveformPeaks({ channels: 1, framesPerBucket: 2, maxBuckets: 1 });
   assert.throws(() => appendWaveformPeaks(s, new Float32Array(4), 0), RangeError);
