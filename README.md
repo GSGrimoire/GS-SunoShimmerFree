@@ -6,15 +6,15 @@ Automatic static and shimmer removal and optional sound polishing for AI-rendere
 
 Drop in a WAV or MP3, flip between Original, Cleaned, optional Polished, and Removed without losing your place in the song, adjust the settings, trim and tidy the arrangement, and download a WAV or MP3. Everything runs locally in the browser tab, so your track is never uploaded. A four-minute stereo song takes about 15 to 20 seconds to clean on a typical laptop.
 
-## Suno stem ZIP import (v6 draft)
+## Suno stem ZIP import (beta)
 
-Drop the **original Suno stems .zip** into the browser, or choose **Import stems ZIP** in the header. The local ZIP workspace inspects the archive without immediately decoding its files, groups corresponding WAV and MP3 into one stem, and prefers WAV when both exist. MP3-only exports also work.
+Drop the original Suno stems archive into the browser or choose **Import stems ZIP (beta)**. The workspace lists the stems before decoding. It accepts WAV or MP3 archives and prefers WAV if both formats of a stem are present. Build a passage using stems of the same format.
 
-You can enable, mute or solo each stem; set its mix volume; independently enable static/shimmer cleaning and stem-specific Sound Polish (clarity, presence, dynamics and an optional loudness target); then **Preview stem** or **Build selected mix**. The compiled stereo result can be played and downloaded as 32-bit float WAV (default), 24/16-bit WAV or 320/256/192-kilobit MP3. No archive contents are uploaded.
+Select a passage, adjust gain, mute or solo individual stems, and choose **Build selected mix or passage**. The preview can be downloaded as a 32-bit floating-point WAV. MP3 passages require browser support for WebCodecs and have a shorter decode limit than WAV passages. The browser processes one stem at a time and keeps audio local. See [Milestone A capabilities and limits](docs/MILESTONE_A_RC.md).
 
-The workspace unpacks and processes **one stem at a time** and limits the final decoded stereo mix to 96 MiB. MP3 encoder delays can vary between stems: verify alignment by listening. If decoded lengths or original sample rates differ, the application warns or blocks reconstruction until you explicitly opt into start-aligned padding/trimming and resampling. There is no automatic time shifting or true-peak limiter. Integer WAV and MP3 may clip if the sum exceeds full scale; choose 32-bit float WAV when preserving the original peak values matters.
+The importer accepts single-file ZIP32 and ZIP64 archives with unencrypted stored or Deflate-compressed entries. The archive and the total expanded contents each have a 1 GiB limit, with up to 256 entries and 160 MiB per entry. Deflate requires browser support for `DecompressionStream('deflate-raw')`.
 
-ZIP inputs must be single-disk, unencrypted ZIP32 with stored or DEFLATE entries, subject to strict limits and corruption checks. Browsers need native raw-DEFLATE streaming (current Chrome, Firefox, Safari and compatible browsers). See [stem ZIP acceptance and test matrix](docs/STEM_ZIP_ACCEPTANCE.md) for the limits, review requirements and known restrictions. This is a **draft feature pending independent review and browser/music validation**, not yet the published version of SunoShimmerFree.
+The nine example stems from the Suno export that prompted ZIP64 support are available individually. [Across the barricade](example-files/across-the-barricade/)
 
 ## What it removes
 

@@ -6,8 +6,16 @@
 const assert = require('node:assert/strict');
 const zlib = require('node:zlib');
 const Zip = require('../stem-zip.js');
+function zip64Extra(...values) {
+  const extra = Buffer.alloc(4 + values.length * 8);
+  extra.writeUInt16LE(1, 0);
+  extra.writeUInt16LE(extra.length - 4, 2);
+  values.forEach((value, index) => extra.writeBigUInt64LE(BigInt(value), 4 + index * 8));
+  return extra;
+}
 function zip(entries, options = {}) {
-  const chunks=[], central=[], enc=new TextEncoder(), flags=0x800;
+  const wide = options.zip64, version = wide ? 45 : 20;
+  const chunks=[], central=[], enc=new TextEncoder(), flags=wide ? 0x808 : 0x800;
   let offset=0;
   function writeUInt(view,index,v,size) {
     if(size===2)view.writeUInt16LE(v,index);
@@ -17,24 +25,38 @@ function zip(entries, options = {}) {
     const name=enc.encode(item.name), content=Buffer.from(item.data||''),
       deflated=item.method===0?content:zlib.deflateRawSync(content);
     const crc=item.badCrc?0:Zip.crc32(content);
-    const loc=Buffer.alloc(30+name.length);
-    writeUInt(loc,0,0x04034b50,4);writeUInt(loc,4,20,2);
+    const localExtra = wide ? zip64Extra(0, 0) : Buffer.alloc(0);
+    const loc=Buffer.alloc(30+name.length+localExtra.length);
+    writeUInt(loc,0,0x04034b50,4);writeUInt(loc,4,version,2);
     writeUInt(loc,6,item.encrypted?flags|1:flags,2);
     writeUInt(loc,8,item.method===0?0:8,2);
-    writeUInt(loc,14,crc,4);writeUInt(loc,18,deflated.length,4);
-    writeUInt(loc,22,content.length,4);writeUInt(loc,26,name.length,2);
+    writeUInt(loc,14,wide?0:crc,4);writeUInt(loc,18,wide?0xffffffff:deflated.length,4);
+    writeUInt(loc,22,wide?0xffffffff:content.length,4);writeUInt(loc,26,name.length,2);
+    writeUInt(loc,28,localExtra.length,2);
     Buffer.from(name).copy(loc,30);
+    localExtra.copy(loc,30+name.length);
     chunks.push(loc,deflated);
-    const dir=Buffer.alloc(46+name.length);
+    const descriptor = Buffer.alloc(wide ? 24 : 0);
+    if (wide) {
+      descriptor.writeUInt32LE(0x08074b50, 0);
+      descriptor.writeUInt32LE(crc, 4);
+      descriptor.writeBigUInt64LE(BigInt(deflated.length), 8);
+      descriptor.writeBigUInt64LE(BigInt(content.length), 16);
+      chunks.push(descriptor);
+    }
+    const centralExtra = wide ? zip64Extra(content.length, deflated.length, offset) : Buffer.alloc(0);
+    const dir=Buffer.alloc(46+name.length+centralExtra.length);
     writeUInt(dir,0,0x02014b50,4);
-    writeUInt(dir,4,item.symlink?0x0314:0x0014,2);
-    writeUInt(dir,6,20,2);writeUInt(dir,8,item.encrypted?flags|1:flags,2);
+    writeUInt(dir,4,item.symlink?0x300+version:version,2);
+    writeUInt(dir,6,version,2);writeUInt(dir,8,item.encrypted?flags|1:flags,2);
     writeUInt(dir,10,item.method===0?0:8,2);
-    writeUInt(dir,16,crc,4);writeUInt(dir,20,deflated.length,4);
-    writeUInt(dir,24,content.length,4);writeUInt(dir,28,name.length,2);
+    writeUInt(dir,16,crc,4);writeUInt(dir,20,wide?0xffffffff:deflated.length,4);
+    writeUInt(dir,24,wide?0xffffffff:content.length,4);writeUInt(dir,28,name.length,2);
+    writeUInt(dir,30,centralExtra.length,2);
     if(item.symlink)writeUInt(dir,38,(0xa000<<16)>>>0,4);
-    writeUInt(dir,42,offset,4);Buffer.from(name).copy(dir,46);
-    central.push(dir);offset+=loc.length+deflated.length;
+    writeUInt(dir,42,wide?0xffffffff:offset,4);Buffer.from(name).copy(dir,46);
+    centralExtra.copy(dir,46+name.length);
+    central.push(dir);offset+=loc.length+deflated.length+descriptor.length;
   }
   const tail=Buffer.concat(central),end=Buffer.alloc(22);
   writeUInt(end,0,0x06054b50,4);writeUInt(end,8,entries.length,2);
@@ -43,10 +65,28 @@ function zip(entries, options = {}) {
   const comment=Buffer.from(options.comment||Buffer.alloc(0));
   if(comment.length>65535)throw Error('Too long ZIP comment in fixture');
   end.writeUInt16LE(comment.length,20);
-  const blob=new Blob([...chunks,tail,end,comment]);blob.name=options.name||'stems.zip';return blob;
+  const trailer = [end, comment];
+  if (wide) {
+    // Match Suno's ZIP64 footer, including placeholder disk numbers in ZIP32.
+    end.fill(0xff, 4, 20);
+    const record = Buffer.alloc(56), locator = Buffer.alloc(20);
+    record.writeUInt32LE(0x06064b50, 0);
+    record.writeBigUInt64LE(44n, 4);
+    record.writeUInt16LE(45, 12);
+    record.writeUInt16LE(45, 14);
+    record.writeBigUInt64LE(BigInt(entries.length), 24);
+    record.writeBigUInt64LE(BigInt(entries.length), 32);
+    record.writeBigUInt64LE(BigInt(tail.length), 40);
+    record.writeBigUInt64LE(BigInt(offset), 48);
+    locator.writeUInt32LE(0x07064b50, 0);
+    locator.writeBigUInt64LE(BigInt(offset + tail.length), 8);
+    locator.writeUInt32LE(1, 16);
+    trailer.unshift(record, locator);
+  }
+  const blob=new Blob([...chunks,tail,...trailer]);blob.name=options.name||'stems.zip';return blob;
 }
-async function throwsZip(f,regex) {
-  await assert.rejects(async()=>Zip.open(f),regex);
+async function throwsZip(f,regex,description) {
+  await assert.rejects(async()=>Zip.open(f),regex,description);
 }
 (async()=>{
   const sample=zip([
@@ -101,6 +141,57 @@ async function throwsZip(f,regex) {
   genuinelySplit.writeUInt16LE(1,genuinelySplit.length-22+4);
   genuinelySplit.writeUInt16LE(1,genuinelySplit.length-22+6);
   await throwsZip(new Blob([genuinelySplit]),/split archive|multiple disks/i);
+  const wideStems = [{name:'Drums.mp3',data:'synthetic MP3 stem'},
+    {name:'Bass.wav',data:'synthetic WAV stem',method:0}];
+  const wide = zip(wideStems,{zip64:true});
+  const maxComment = Buffer.alloc(65535);
+  decoy.copy(maxComment,maxComment.length-decoy.length);
+  for (const file of [wide, zip(wideStems,{zip64:true,comment:maxComment})]) {
+    const archive = await Zip.open(file);
+    assert.deepEqual(archive.stems.map(stem=>[stem.name,stem.format]),[['Drums','MP3'],['Bass','WAV']]);
+    for (const [i,stem] of archive.stems.entries())
+      assert.equal(Buffer.from(await archive.extract(stem.entry)).toString(),wideStems[i].data);
+  }
+  const zip64 = Buffer.from(await wide.arrayBuffer());
+  const end = zip64.length-22, locator = end-20;
+  const record = Number(zip64.readBigUInt64LE(locator+8));
+  const directory = Number(zip64.readBigUInt64LE(record+48));
+  const extra = directory+46+zip64.readUInt16LE(directory+28);
+  const legacyValues = Buffer.from(zip64);
+  legacyValues.writeUInt32LE(0,end+4);
+  legacyValues.writeUInt16LE(wideStems.length,end+8);
+  legacyValues.writeUInt16LE(wideStems.length,end+10);
+  legacyValues.writeUInt32LE(record-directory,end+12);
+  legacyValues.writeUInt32LE(directory,end+16);
+  assert.equal((await Zip.open(new Blob([legacyValues]))).stems.length,wideStems.length,
+    'ZIP64 locator is supported when also writing ordinary footer values');
+  const extension = Buffer.from([1, 0, 0, 0, 0, 0]);
+  const extended = Buffer.concat([zip64.subarray(0,locator),extension,zip64.subarray(locator),maxComment]);
+  extended.writeBigUInt64LE(BigInt(44+extension.length),record+4);
+  extended.writeUInt16LE(maxComment.length,end+extension.length+20);
+  assert.equal((await Zip.open(new Blob([extended]))).stems.length,wideStems.length,
+    'ZIP64 end record can extend beyond the bounded initial tail read');
+  const rejects = [
+    ['missing locator', b=>b.writeUInt32LE(0,locator), /missing ZIP64/],
+    ['invalid record offset', b=>b.writeBigUInt64LE(BigInt(locator),locator+8), /ZIP64.*offset/],
+    ['truncated record', b=>b.writeBigUInt64LE(43n,record+4), /ZIP64.*length/],
+    ['split locator', b=>b.writeUInt32LE(2,locator+16), /multiple disks/],
+    ['split footer', b=>b.writeUInt32LE(1,record+16), /multiple disks/],
+    ['split entry', b=>b.writeUInt16LE(1,directory+34), /multiple disks/],
+    ['legacy fields conflict', b=>b.writeUInt16LE(1,end+10), /records disagree/],
+    ['directory count exceeds cap', b=>{ b.writeBigUInt64LE(257n,record+24); b.writeBigUInt64LE(257n,record+32); }, /too many entries/],
+    ['directory outside the archive', b=>b.writeBigUInt64LE(BigInt(zip64.length),record+48), /directory bounds/],
+    ['missing entry extra field', b=>b.writeUInt16LE(2,extra), /missing ZIP64 entry extra/],
+    ['truncated entry extra field', b=>b.writeUInt16LE(25,extra+2), /truncated ZIP extra/],
+    ['entry size overflows 32 bits', b=>b.writeBigUInt64LE(1n<<32n,extra+4), /ZIP64 value exceeds/],
+    ['entry exceeds cap', b=>b.writeBigUInt64LE(BigInt(Zip.MAX_ENTRY+1),extra+4), /160 MiB/],
+    ['local header overlaps the directory', b=>b.writeBigUInt64LE(BigInt(directory),extra+20), /local entry overlaps/]
+  ];
+  for (const [description,change,expected] of rejects) {
+    const damaged = Buffer.from(zip64);
+    change(damaged);
+    await throwsZip(new Blob([damaged]),expected,description);
+  }
   // Cancellation is checked before any entry bytes are read. A cancelled
   // extraction must never produce a partial, CRC-unverified result.
   const cancelled=await Zip.open(zip([{name:'Cancelled.mp3',data:'never read'}]));
@@ -112,5 +203,5 @@ async function throwsZip(f,regex) {
     'a cancelled extraction must not corrupt a subsequent read');
   const tooMany=Array.from({length:257},(_,i)=>({name:i+'.mp3',data:'a'}));
   await throwsZip(zip(tooMany),/too many entries/);
-  console.log('Stem ZIP tests passed: stored/deflated, UTF-8, local extraction, MP3-only, format pairs, CRC, ZIP64, comment-decoy EOCD, genuine split disks, traversal, symlinks, encryption, duplicates, bounds.');
+  console.log('Stem ZIP tests passed: stored/deflated, UTF-8, local extraction, MP3-only, format pairs, CRC, ZIP32/ZIP64, comment-decoy end records, genuine split disks, traversal, symlinks, encryption, duplicates, bounds.');
 })().catch(err=>{console.error(err);process.exitCode=1;});
