@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SSF milestone A browser acceptance</title>
+<style>
+  body{font:15px/1.5 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem}
+  table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+  td,th{border-bottom:1px solid #ddd;padding:.3rem .4rem;text-align:left}
+  .pass{color:#0a6b2f;font-weight:600}.fail{color:#b00020;font-weight:600}
+  #verdict{font-size:1.3rem;margin:1rem 0}
+  code{background:#f2f2f2;padding:0 .25em}
+</style>
+<h1>SSF milestone A: browser acceptance</h1>
+<p>Runs in this browser's real WebCodecs MP3 decoder. Fetches the ten public Viking stems
+(about 100 MB) from the same site; no audio is uploaded anywhere. Takes about a minute.</p>
+<p id="env">Starting...</p>
+<div id="verdict">Running...</div>
+<table><thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead><tbody id="rows"></tbody></table>
+<script src="../../stem-mp3.js"></script>
+<script>
+'use strict';
+const rows=document.getElementById('rows'),results=[];
+function row(name,ok,detail){
+  results.push({name,ok,detail});
+  const tr=document.createElement('tr');
+  for (const [t,c] of [[name,''],[ok?'PASS':'FAIL',ok?'pass':'fail'],[detail,'']]){
+    const td=document.createElement('td');td.textContent=t;if(c)td.className=c;tr.append(td);}
+  rows.append(tr);
+}
+const STEMS=['0 Lead Vocals','1 Drums','2 Bass','3 Keyboard','4 Percussion','5 Strings','6 Synth','7 Other','8 Brass','9 Woodwinds'];
+// Preview site: /main/ serves the fixtures. Override with ?fixtures=<url-prefix>.
+const base=new URLSearchParams(location.search).get('fixtures')||
+  (location.pathname.match(/^\/(b|pr)\/[^/]+\//)?'/main/example-files/viking-shimmer/':'../../example-files/viking-shimmer/');
+const M=self.SunoStemMp3;
+async function reference(bytes,idx,s,e){
+  // Feed EVERY frame from frame 0 into a fresh decoder and keep [s,e).
+  const ch=idx.channels,out=Array.from({length:ch},()=>new Float32Array(e-s));
+  let outputs=0,gaps=0,lastEnd=null,firstTs=null;
+  const dec=new AudioDecoder({output(a){
+      const b=Math.round(a.timestamp*idx.rate/1e6),n=a.numberOfFrames;
+      if(firstTs===null)firstTs=b; if(lastEnd!==null&&b!==lastEnd)gaps++; lastEnd=b+n; outputs++;
+      const from=Math.max(s,b),to=Math.min(e,b+n);
+      if(to>from){const t=new Float32Array(n);
+        for(let c=0;c<ch;c++){a.copyTo(t,{planeIndex:c,format:'f32-planar'});out[c].set(t.subarray(from-b,to-b),from-s);}}
+      a.close();},error(err){throw err;}});
+  dec.configure({codec:'mp3',sampleRate:idx.rate,numberOfChannels:ch});
+  const last=Math.min(idx.frames.length-1,Math.floor((e-1)/1152)+2);
+  for(let i=0;i<=last;i++){const f=idx.frames[i];
+    dec.decode(new EncodedAudioChunk({type:'key',timestamp:Math.round(i*1152*1e6/idx.rate),data:bytes.subarray(f.offset,f.offset+f.size)}));
+    if(i%64===0)while(dec.decodeQueueSize>32)await new Promise(r=>setTimeout(r,0));}
+  await dec.flush();dec.close();
+  return {out,outputs,fed:last+1,gaps,firstTs};
+}
+(async()=>{
+  const ua=(navigator.userAgent.match(/(Firefox|Edg|Chrome|Version)\/[\d.]+/g)||[]).join(' ');
+  document.getElementById('env').textContent='Browser: '+ua+' · page '+location.pathname+' · fixtures '+base;
+  if(typeof AudioDecoder!=='function'){row('WebCodecs AudioDecoder present',false,'missing');return done();}
+  const sup=await AudioDecoder.isConfigSupported({codec:'mp3',sampleRate:48000,numberOfChannels:2}).catch(e=>({supported:false,e}));
+  row('WebCodecs MP3 decoder supported',sup.supported===true,String(sup.supported));
+  if(sup.supported!==true)return done();
+  const S=462*48000,E=474*48000,heap0=performance.memory&&performance.memory.usedJSHeapSize;
+  const passages=[];let peakHeap=heap0||0;
+  for(const name of STEMS){
+    try{
+      const res=await fetch(base+encodeURIComponent(name)+'.mp3');
+      if(!res.ok)throw new Error('fetch '+res.status);
+      const bytes=new Uint8Array(await res.arrayBuffer());
+      const idx=await M.indexFrames(bytes);
+      const t0=performance.now(),p=await M.decodePassage(bytes,462,474),ms=performance.now()-t0;
+      const r=await reference(bytes,idx,S,E);
+      let mx=0,energy=0;
+      for(let c=0;c<idx.channels;c++)for(let i=0;i<E-S;i++){const d=Math.abs(p.channels[c][i]-r.out[c][i]);if(!(d<=mx))mx=d;energy+=r.out[c][i]**2;}
+      const ok=mx===0&&energy>0&&r.gaps===0&&r.firstTs===0&&r.outputs===r.fed;
+      row(name+': 462-474 s seek == full decode',ok,'max diff '+mx+', pre-roll '+p.preRollFrames+' frames, '+Math.round(ms)+' ms, outputs '+r.outputs+'/'+r.fed+', gaps '+r.gaps);
+      passages.push({name,sourceFrames:p.sourceFrames,start:p.passageStartFrame,len:p.channels[0].length,timeline:p.timeline});
+      if(performance.memory)peakHeap=Math.max(peakHeap,performance.memory.usedJSHeapSize);
+    }catch(err){row(name+': 462-474 s seek == full decode',false,String(err&&err.message||err));}
+  }
+  const same=passages.length===10&&passages.every(x=>x.sourceFrames===passages[0].sourceFrames&&x.start===S&&x.len===E-S&&x.timeline==='mp3-decoder-output');
+  row('All ten stems on one timeline',same,passages.length+' stems, source '+(passages[0]&&passages[0].sourceFrames)+' frames, start '+S);
+  // Cancellation: abort mid-decode must reject promptly and not hang.
+  try{
+    const bytes=new Uint8Array(await (await fetch(base+encodeURIComponent('7 Other')+'.mp3')).arrayBuffer());
+    const ac=new AbortController(),t0=performance.now();
+    const pending=M.decodePassage(bytes,100,190,ac.signal);
+    setTimeout(()=>ac.abort(),30);
+    let msg='resolved';
+    try{await pending;}catch(e){msg=e.message;}
+    const ms=Math.round(performance.now()-t0);
+    row('Abort during decode settles as cancelled',/cancelled/.test(msg)&&ms<5000,msg+' after '+ms+' ms');
+    const again=await M.decodePassage(bytes,462,463);
+    row('Decoder usable again after cancel',again.channels[0].length===48000,again.channels[0].length+' frames');
+  }catch(err){row('Cancellation',false,String(err.message||err));}
+  row('JavaScript heap (Chromium only, informational)',true,
+    performance.memory?('start '+(heap0/1048576).toFixed(0)+' MiB, peak '+(peakHeap/1048576).toFixed(0)+' MiB; native decoder memory not visible'):'not reported by this browser');
+  done();
+})();
+function done(){
+  const failed=results.filter(r=>!r.ok).length;
+  const v=document.getElementById('verdict');
+  v.textContent=failed?'FAILED: '+failed+' of '+results.length+' checks':'PASSED: all '+results.length+' checks';
+  v.className=failed?'fail':'pass';
+  document.title=(failed?'FAIL':'PASS')+' · SSF milestone A browser acceptance';
+}
+</script>
+</html>

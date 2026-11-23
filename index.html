@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  GS SunoShimmerFree page v4
+  GS SunoShimmerFree page v5
   Version history
     v1  First release, GS Grimoire styling: spectrogram wipe, A/B/Removed
         switch, settings below the track.
@@ -13,18 +13,22 @@
         section volume and fades, undo and redo, zoom. Playback and
         downloads follow the edits.
     v4  Local MP3 downloads alongside WAV, with progress and cancellation.
+    v5b Optional linked dynamic control as an additional Sound Polish setting.
+    v5a Optional Sound Polish tone finishing with presets and a separate audio version.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- Release-origin policy (issue #36): the page may load only its own files and may not send data anywhere. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' blob: data:; img-src 'self' data: blob:; media-src 'self' blob: data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>SunoShimmerFree</title>
 <meta name="description" content="Clear the static and glassy shimmer from AI-rendered music. Runs in your browser; your file is never uploaded.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Privacy: use system fonts; do not initiate third-party font requests. -->
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="stem.css">
 </head>
 <body>
 
@@ -33,7 +37,7 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2" /></svg>
     <span>SunoShimmerFree</span>
   </a>
-  <a class="pill pill-outline" href="https://github.com/GSGrimoire/GS-SunoShimmerFree">Source on GitHub</a>
+  <div class="stem-nav"><button class="pill pill-outline" type="button" data-pick>Import stems ZIP (beta)</button><a class="pill pill-outline" href="https://github.com/GSGrimoire/GS-SunoShimmerFree">Source on GitHub</a></div>
 </header>
 
 <div class="app">
@@ -93,6 +97,48 @@
       </div>
     </section>
 
+    <section class="group" aria-labelledby="gPolish">
+      <div class="group-head"><h3 id="gPolish">Sound Polish</h3><span class="new-label">v5c</span></div>
+      <p class="group-note">Optional sound finishing after cleaning. Tone controls reduce muddiness and improve presence; gentle dynamics can tame level variations. This is not reverb removal. Loudness adjustment is optional and peak constrained.</p>
+      <div class="field">
+        <label for="polishPreset">Preset</label>
+        <select id="polishPreset" class="polish-select">
+          <option value="natural" selected>Natural</option>
+          <option value="clear">Clear</option>
+          <option value="warm">Warm</option>
+          <option value="forward">Forward</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="polishClarity">Clarity</label><output for="polishClarity">20%</output>
+        <input type="range" id="polishClarity" min="0" max="100" step="5" value="20">
+        <p class="help">Reduce muddy low-mid energy without boosting hiss.</p>
+      </div>
+      <div class="field">
+        <label for="polishPresence">Presence</label><output for="polishPresence">20%</output>
+        <input type="range" id="polishPresence" min="0" max="100" step="5" value="20">
+        <p class="help">Make vocals and instruments feel more forward. Excessive settings can sound harsh.</p>
+      </div>
+      <div class="field">
+        <label for="polishDynamics">Dynamics</label><output for="polishDynamics">0%</output>
+        <input type="range" id="polishDynamics" min="0" max="100" step="5" value="0">
+        <p class="help">Gently smooth loud passages with stereo-linked compression. Off preserves the existing tone-only sound; no automatic loudness boost.</p>
+      </div>
+      <div class="field">
+        <label for="polishTarget">Loudness target</label>
+        <select id="polishTarget" class="polish-select">
+          <option value="off" selected>Off: measure only</option>
+          <option value="-18">-18 LUFS (quieter)</option>
+          <option value="-16">-16 LUFS (balanced)</option>
+          <option value="-14">-14 LUFS (louder)</option>
+        </select>
+        <p class="help">Loudness units relative to full scale (LUFS). Boost is limited by peak headroom, so the target may not be reached.</p>
+      </div>
+      <button class="chip polish-button" type="button" id="polishApply" disabled>Polish cleaned track</button>
+      <p class="group-note" id="polishStatus" role="status" aria-live="polite">Clean a track first.</p>
+    </section>
+
     <div class="panel-foot">
       <p class="apply-note" id="applyNote" aria-live="polite"></p>
       <div class="panel-actions">
@@ -109,9 +155,9 @@
     <div class="upload" id="drop">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
       <h1>Clean up a track</h1>
-      <p>Drop in a song to remove the static and shimmer. WAV works best; MP3 and most other formats work too. Your file stays on this device and is never uploaded.</p>
+      <p>Drop in a song or Suno stem ZIP. WAV works best; MP3 and most other audio formats work too. ZIP archives open a local multistem workspace. Your audio stays on this device.</p>
       <button class="pill pill-cream" type="button" data-pick>Upload audio</button>
-      <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg" class="visually-hidden" tabindex="-1" aria-hidden="true">
+      <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg,.zip" class="visually-hidden" tabindex="-1" aria-hidden="true">
     </div>
 
     <div class="loaded" id="loaded" hidden>
@@ -175,20 +221,31 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
           </button>
         </div>
+        <div class="track" data-mode="polish">
+          <label>
+            <input type="radio" name="mode" value="polish" disabled>
+            <span class="tile tile-polish" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.1 7.9L22 12l-7.9 2.1L12 22l-2.1-7.9L2 12l7.9-2.1z"/></svg></span>
+            <span class="track-text"><span class="track-title">Polished</span><span class="track-meta" id="metaPolish">Apply Sound Polish after cleaning.</span></span>
+          </label>
+          <span class="track-key" aria-hidden="true">3</span>
+          <button class="icon-btn" id="dlPolish" type="button" aria-label="Download polished WAV" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+          </button>
+        </div>
         <div class="track" data-mode="removed">
           <label>
             <input type="radio" name="mode" value="removed" disabled>
             <span class="tile tile-removed" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></span>
             <span class="track-text"><span class="track-title">Removed</span><span class="track-meta">What was taken out. It should sound like hiss and grit, not melody.</span></span>
           </label>
-          <span class="track-key" aria-hidden="true">3</span>
+          <span class="track-key" aria-hidden="true">4</span>
           <button class="icon-btn" id="dlRemoved" type="button" aria-label="Download removed WAV" disabled>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
           </button>
         </div>
       </fieldset>
       <p class="edits-note" id="editsNote" hidden>Playback and downloads include your edits.</p>
-      <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1, 2 and 3 switch versions. The cleaned file has no EQ, compression, limiting or normalising added, so it is ready for your usual mastering.</p>
+      <p class="hint">Switching versions keeps your place in the song. Space plays and pauses; 1 = Original, 2 = Cleaned, 3 = Polished, 4 = Removed. The Cleaned version is unmastered; Polished adds optional tone, dynamic and peak-constrained loudness controls. The spectrogram still shows Cleaned when listening to Polished.</p>
 
       <section class="editor" aria-labelledby="editHead">
         <div class="list-head">
@@ -274,7 +331,7 @@
   <div class="drop-card">
     <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
     <p class="drop-title">Drop to clean</p>
-    <p class="drop-sub" id="dropSub">WAV, MP3, FLAC and most other audio files</p>
+    <p class="drop-sub" id="dropSub">WAV, MP3, FLAC or Suno stems ZIP</p>
   </div>
 </div>
 
@@ -301,6 +358,12 @@
 <script src="wav.js"></script>
 <script src="engine.js"></script>
 <script src="edit.js"></script>
+<script src="loudness.js"></script>
+<script src="polish.js"></script>
+<script src="stem-zip.js"></script>
+<script src="stem-mp3.js"></script>
+<script src="stem-resample.js"></script>
+<script src="stem-ui.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

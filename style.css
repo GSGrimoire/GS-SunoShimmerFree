@@ -250,6 +250,16 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 .tile-original { background: var(--raised-2); color: var(--ink-2); }
 .tile-clean { background: var(--create); color: var(--canvas); }
 .tile-removed { background: linear-gradient(135deg, #123a6b, var(--blue)); color: var(--ink); }
+.tile-polish { background: linear-gradient(135deg, #483276, var(--violet)); color: var(--ink); }
+.new-label { color: var(--orange); font-size: 12px; font-weight: 600; }
+.polish-select {
+  grid-column: 1 / -1; width: 100%; min-height: 38px; margin-top: 5px;
+  padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--edge);
+  background: var(--raised-2); color: var(--ink); font: inherit;
+}
+.polish-button { margin-top: 12px; width: 100%; }
+.polish-button:disabled { opacity: .5; cursor: not-allowed; }
+
 
 .hint { color: var(--ink-3); font-size: 13.5px; max-width: 72ch; margin: 12px 0 0; }
 
