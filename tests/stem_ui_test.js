@@ -110,6 +110,7 @@ function harness(stems, options={}) {
     root.AudioDecoder=class {};
     root.EncodedAudioChunk=class {};
     root.SunoStemMp3={async decodePassage(bytes,start,end) {
+      if(options.mp3BudgetReject) throw new Error('MP3 indexed passage exceeds the bounded decode budget.');
       const sr=44100, length=Math.round((end-start)*sr);
       return {channels:[new Float32Array(length).fill(.3),new Float32Array(length).fill(.3)],
         sr,originalRate:sr,sourceFrames:Math.round(4*sr),
