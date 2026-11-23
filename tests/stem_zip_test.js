@@ -51,6 +51,17 @@ function zip(entries, options = {}) {
       centralExtra.writeUInt16LE(centralExtra.readUInt16LE(2) + padding.length, 2);
       centralExtra = Buffer.concat([centralExtra, padding]);
     }
+    if (wide && item.zip64ExtraVariant === 'duplicate') {
+      // Both complete ZIP64 fields are structurally valid; only duplicate detection rejects.
+      centralExtra = Buffer.concat([centralExtra, centralExtra]);
+    }
+    if (wide && item.zip64ExtraVariant === 'shortWithValidNext') {
+      // Two 8-byte replacements followed by two well-formed empty extra fields.
+      // Without the prefix-length guard, the location read crosses the field
+      // boundary and sees eight zero bytes, a plausible first-entry offset.
+      centralExtra = Buffer.concat([zip64Extra(content.length, deflated.length),
+        Buffer.alloc(8)]);
+    }
     const dir=Buffer.alloc(46+name.length+centralExtra.length);
     writeUInt(dir,0,0x02014b50,4);
     writeUInt(dir,4,item.symlink?0x300+version:version,2);
@@ -167,6 +178,14 @@ async function throwsZip(f,regex,description) {
     'synthetic padded stem','extended ZIP64 field must preserve payload identity');
   assert.equal(Buffer.from(await padded.extract(padded.stems[1].entry)).toString(),
     'synthetic plain stem','later directory entries remain aligned');
+  // These are guard-sensitive: removing the ZIP64 size/duplicate validation
+  // would allow both archives to import, unlike a malformed trailing byte.
+  await throwsZip(zip([{name:'Duplicate.mp3',data:'duplicate field',
+    zip64ExtraVariant:'duplicate'}],{zip64:true}),
+    /invalid ZIP64 entry extra field/, 'duplicate complete ZIP64 extra fields');
+  await throwsZip(zip([{name:'Short.mp3',data:'short replacement prefix',
+    zip64ExtraVariant:'shortWithValidNext'}],{zip64:true}),
+    /invalid ZIP64 entry extra field/, 'short ZIP64 prefix followed by valid extra fields');
   const zip64 = Buffer.from(await wide.arrayBuffer());
   const end = zip64.length-22, locator = end-20;
   const record = Number(zip64.readBigUInt64LE(locator+8));
