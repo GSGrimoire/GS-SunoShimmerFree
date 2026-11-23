@@ -83,7 +83,7 @@
       if(id==='fmt '){
         if(n<16) throw new Error('Truncated WAV format.');
         fmt={code:dv.getUint16(body,true),ch:dv.getUint16(body+2,true),
-          sr:dv.getUint32(body+4,true),align:dv.getUint16(body+12,true),
+          sr:dv.getUint32(body+4,true),rate:dv.getUint32(body+8,true),align:dv.getUint16(body+12,true),
           bits:dv.getUint16(body+14,true)};
         if(fmt.code===65534){
           if(n<40||dv.getUint16(body+16,true)!==22)
@@ -108,7 +108,7 @@
     var valid=(fmt.code===1&&[8,16,24,32].includes(fmt.bits))||
       (fmt.code===3&&[32,64].includes(fmt.bits));
     var stride=fmt.ch*fmt.bits/8;
-    if(!valid||fmt.align!==stride||size%stride)
+    if(!valid||fmt.align!==stride||fmt.sr*stride!==fmt.rate||size%stride)
       throw new Error('Unsupported or unaligned WAV sample format.');
     var sourceFrames=size/stride;
     if(!Number.isSafeInteger(sourceFrames)||!Number.isFinite(startSeconds)||
