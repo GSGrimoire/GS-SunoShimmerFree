@@ -96,6 +96,14 @@
               throw new Error('Unsupported extensible WAV subtype GUID.');
           if(subtype!==1&&subtype!==3)
             throw new Error('Unsupported extensible WAV subtype GUID.');
+          // Packed samples only: reduced valid-bit layouts need different scaling.
+          var validBits=dv.getUint16(body+18,true);
+          if(validBits!==fmt.bits)
+            throw new Error('Unsupported extensible WAV valid bits.');
+          // Zero means unspecified; otherwise only mono center or stereo L/R.
+          var channelMask=dv.getUint32(body+20,true);
+          if(channelMask!==0&&channelMask!==(fmt.ch===1?4:fmt.ch===2?3:0))
+            throw new Error('Unsupported extensible WAV channel mask.');
           fmt.code=subtype;
         }
       }
