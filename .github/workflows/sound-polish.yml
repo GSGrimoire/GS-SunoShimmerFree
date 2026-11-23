@@ -33,6 +33,7 @@ on:
       - 'tests/stem_mp3_test.js'
       - 'tests/stem_mp3_ffmpeg_parity_test.js'
       - 'tests/run_acceptance_gate.js'
+      - 'tests/acceptance_gate_test.js'
       - 'tests/milestone_a_acceptance_test.js'
       - 'tests/stem_wav_passage_test.js'
       - 'tests/stem_resample_test.js'
@@ -70,6 +71,7 @@ on:
       - 'tests/stem_mp3_test.js'
       - 'tests/stem_mp3_ffmpeg_parity_test.js'
       - 'tests/run_acceptance_gate.js'
+      - 'tests/acceptance_gate_test.js'
       - 'tests/milestone_a_acceptance_test.js'
       - 'tests/stem_wav_passage_test.js'
       - 'tests/stem_resample_test.js'
@@ -81,39 +83,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      # Fixture suites fail instead of skipping, and read the pinned Viking stems.
+      SSF_REQUIRE_FIXTURES: '1'
+      SSF_VIKING_DIR: /tmp/viking-shimmer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Test tone processing and peak safety
-        run: node tests/polish_test.js
-      - name: Test safe Suno stem ZIP archive inspection and extraction
-        run: node tests/stem_zip_test.js
-      - name: Test anti-alias band-limited stem resampler
-        run: node tests/stem_resample_test.js
-      - name: Test WebCodecs MP3 frame decoder and adversarial cancellation
-        run: node tests/stem_mp3_test.js
-      - name: Test indexed MP3 seek parity against FFmpeg (skips without ffmpeg or Viking fixtures)
-        run: node tests/stem_mp3_ffmpeg_parity_test.js
-      - name: Test bounded WAV passage reader and hostile headers
-        run: node tests/stem_wav_passage_test.js
-      - name: Milestone A end-to-end acceptance (skips without ffmpeg or Viking fixtures)
-        run: node tests/milestone_a_acceptance_test.js
-      - name: Test synthetic stem browser workspace and export flows
-        run: node tests/stem_ui_test.js
-      - name: Test linked dynamics, bypass and peak safety
-        run: node tests/dynamics_test.js
-      - name: Test browser-state integration and export races
-        run: node tests/polish_integration_test.js
-      - name: Install FFmpeg for independent codec validation
+      - name: Install FFmpeg (needed by the parity, acceptance, loudness and MP3 suites)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
-      - name: Test loudness against independent FFmpeg reference
-        run: node tests/loudness_test.js
-      - name: Test WAV/MP3 encoders and command line regression
-        run: node tests/mp3_test.js
+          ffmpeg -version | head -1
+      - name: Provision the ten public Viking stems, pinned to main commit c6b882c
+        # Fetched by commit SHA, so git verifies every byte. Extracted outside the
+        # checkout, so the gate still sees a clean working tree.
+        run: |
+          git fetch --no-tags --depth=1 origin c6b882c2364a973a134466aafadc2ea2a216700c
+          git archive FETCH_HEAD example-files/viking-shimmer | tar -x -C /tmp --strip-components=1
+          test "$(ls "$SSF_VIKING_DIR"/*.mp3 | wc -l)" -eq 10
+      - name: Milestone A acceptance gate (every suite, strict fixtures, clean checkout, no SKIP)
+        run: node tests/run_acceptance_gate.js
       - name: Test editor regression against synthetic WAV
         run: |
           node -e 'const fs=require("fs"),w=require("./wav.js"),s=48000,n=s*5,a=Array.from({length:2},(_,c)=>Float32Array.from({length:n},(_,i)=>.2*Math.sin(2*Math.PI*(240+c*190)*i/s)));fs.writeFileSync("/tmp/ssf-edit-fixture.wav",Buffer.from(w.encodeWav(a,s,24)))'

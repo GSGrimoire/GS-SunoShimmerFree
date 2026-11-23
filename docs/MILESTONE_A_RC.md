@@ -17,7 +17,9 @@ mkdir -p /tmp/vk && for f in "0 Lead Vocals" "1 Drums" "2 Bass" "3 Keyboard" "4 
 SSF_VIKING_DIR=/tmp/vk node tests/run_acceptance_gate.js
 ```
 
-Requires Node 22 and FFmpeg 6 (Chrome's WebCodecs MP3 decoder is FFmpeg's mpegaudio decoder). It runs every `tests/*_test.js` with `SSF_REQUIRE_FIXTURES=1`, so nothing passes by skipping, and it prints the commit, the tool versions and one PASS/FAIL line per suite. Exit code 0 only if all suites pass. A dirty working tree is flagged as not a valid result.
+Requires Node 22 and FFmpeg 6 (Chrome's WebCodecs MP3 decoder is FFmpeg's mpegaudio decoder). It runs every `tests/*_test.js` with `SSF_REQUIRE_FIXTURES=1`, so nothing passes by skipping, and it prints the commit, the tool versions and one PASS/FAIL line per suite. Exit code 0 only if all suites pass, no suite prints a SKIP line, and the checkout is a clean git checkout with a known commit. A dirty or unknown revision still runs every suite but ends `GATE INVALID` with exit code 2, because the result cannot be pinned to a SHA (`tests/acceptance_gate_test.js` checks this).
+
+CI (`.github/workflows/sound-polish.yml`) runs the same gate: it installs FFmpeg first, extracts the ten Viking stems from main commit `c6b882c` into `/tmp/viking-shimmer` (outside the checkout, so the tree stays clean), sets `SSF_REQUIRE_FIXTURES=1`, and runs `node tests/run_acceptance_gate.js`. A green step therefore means every suite printed PASS; read the gate's output in the job log, which includes the parity and acceptance results.
 
 | Suite | What it proves |
 |---|---|
