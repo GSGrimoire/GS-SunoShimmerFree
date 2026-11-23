@@ -163,11 +163,67 @@ async function mp3PreExtractionAdmissionRegression() {
     h.el('stemClipEnd').value=variant==='full-source'?'0':'0.2';
     h.el('stemBuild').fire('click');await flush();
     assert.match(h.el('stemStatus').textContent,
-      variant==='oversized'||variant==='unknown-size'?/64 MiB scan budget/:/finite selected passage and supported WebCodecs/,
+      variant==='oversized'||variant==='unknown-size'?/64 MiB scan budget/:
+        variant==='full-source'?/Choose a preview passage: set a preview end after the start/:/finite selected passage and supported WebCodecs/,
       variant+' must fail before extraction');
     assert.equal(h.extractCalls(),0,variant+' must not materialize ZIP entry');
     assert.equal(h.audios.length,0,'rejected MP3 must not publish preview');
     assert.equal(h.el('stemExport').disabled,true,'rejected MP3 must not export');
+    h.ui.close();
+  }
+}
+// Milestone A previews a finite excerpt only (owner test 23 Nov 2026 and
+// ChatGPT-2 finding 7098400393): no "0 = whole song", a 240 s cap and an
+// unpack budget, all enforced before any ZIP entry is extracted.
+async function finiteExcerptAdmissionRegression() {
+  // Default end is 30 s; an untouched default on a shorter first stem
+  // previews the whole stem and shows the end it used.
+  {
+    const h=harness([fakeStem('Short',.2,48000,2)]);
+    await h.ui.open({name:'Default excerpt.zip',size:2000});
+    assert.equal(h.el('stemClipStart').value,'0');
+    assert.equal(h.el('stemClipEnd').value,'30','default preview end is 30 s');
+    h.el('stemBuild').fire('click');await flush();
+    assert.equal(h.audios.length,1,'untouched default on a 2 s stem builds');
+    assert.equal(h.audios[0].length,96000,'whole 2 s stem previewed');
+    assert.equal(h.el('stemClipEnd').value,'2','end field shows the length actually used');
+    h.ui.close();
+  }
+  // A typed end beyond the stem is an error, not silently changed.
+  {
+    const h=harness([fakeStem('Short',.2,48000,2)]);
+    await h.ui.open({name:'Typed end.zip',size:2000});
+    h.el('stemClipEnd').value='30';h.el('stemClipEnd').fire('change');
+    h.el('stemBuild').fire('click');await flush();
+    assert.match(h.el('stemStatus').textContent,/outside the first stem duration \(2\.00 seconds\)/);
+    assert.equal(h.audios.length,0);
+    h.ui.close();
+  }
+  // Whole song, over-long passage and oversized WAV entry: refused before
+  // extraction, with guidance.
+  for (const [label,start,end,size,re] of [
+    ['end 0 (whole song)','0','0',undefined,/Choose a preview passage: set a preview end after the start/],
+    ['end before start','5','4',undefined,/Choose a preview passage/],
+    ['over 240 s','10','250.5',undefined,/Milestone A previews up to 240 seconds/],
+    ['WAV entry over 256 MiB','0','1',256*1048576+1,/WAV entry exceeds the 256 MiB unpack budget/]]) {
+    const st=fakeStem('Big',.2,48000,1);
+    if (size!==undefined) st.entry.size=size;
+    const h=harness([st],{rejectExtract:true});
+    await h.ui.open({name:'Admission.zip',size:2000});
+    h.el('stemClipStart').value=start;h.el('stemClipEnd').value=end;
+    h.el('stemBuild').fire('click');await flush();
+    assert.match(h.el('stemStatus').textContent,re,label);
+    assert.equal(h.extractCalls(),0,label+': nothing unpacked');
+    assert.equal(h.audios.length,0,label+': no preview');
+    assert.equal(h.el('stemExport').disabled,true,label+': no export');
+    h.ui.close();
+  }
+  // Interface no longer offers "0 means full length".
+  {
+    const h=harness([fakeStem('Any',.2)]);
+    await h.ui.open({name:'Label.zip',size:2000});
+    assert.doesNotMatch(h.el('stemWorkspace')._innerHTML,/0 means full length/);
+    assert.match(h.el('stemWorkspace')._innerHTML,/up to 240 s after the start/);
     h.ui.close();
   }
 }
@@ -177,6 +233,7 @@ async function flush(){
 (async()=>{
   await mixedFormatFailClosedRegression();
   await mp3PreExtractionAdmissionRegression();
+  await finiteExcerptAdmissionRegression();
   const h=harness([fakeStem('Lead Vocals',.2),fakeStem('Drums',.3)]);
   await h.ui.open({name:'Synthetic Stems.zip',size:1234});
   assert.match(h.el('stemWorkspace')._innerHTML,/milestone A: 32-bit float WAV passage/,
@@ -270,7 +327,7 @@ async function flush(){
   p.el('stemClipEnd').value='3';
   p.el('stemClipStart').value='3';
   p.el('stemBuild').fire('click');await flush();
-  assert.match(p.el('stemStatus').textContent,/Preview range must/);
+  assert.match(p.el('stemStatus').textContent,/Choose a preview passage: set a preview end after the start/);
   // Inert selected-stem intervals must be visibly explained, not mistaken
   // for a failed shimmer-removal algorithm.
   p.stems[0].passageStart=3.3;

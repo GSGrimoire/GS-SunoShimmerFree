@@ -45,7 +45,7 @@ Then the manual part, at `https://ssf-preview.goofyspook.workers.dev/b/<candidat
 3. Mute Other from 465 to 470 at 100%. Build and play. Expect a smooth 20 ms fade out and back in, with no click.
 4. Export as 32-bit float WAV. Open it in any editor. Expect 12.000 s at 48 kHz, matching what you heard.
 5. Start a build and press Cancel processing at once. Expect "Processing cancelled", export disabled, and a later build that works.
-6. Set end 0 (full length). Expect a clear refusal for MP3 (milestone A is excerpt-only).
+6. Set end 0, or a passage longer than 240 s. Expect a clear message asking for a shorter passage (milestone A previews excerpts only). On a fresh import the fields start at 0–30 s.
 7. Keep Chrome's Task Manager open (Window → Task Manager) and note the tab's memory at its peak.
 8. Load and use the single-track tool once. Expect it unchanged.
 
@@ -62,7 +62,9 @@ Then the manual part, at `https://ssf-preview.goofyspook.workers.dev/b/<candidat
 
 Known limits for the candidate (disclosed in the UI):
 
-- MP3 is excerpt-only; full-length MP3 decode is refused to protect memory (#48 is the follow-up).
+- Every preview is a finite excerpt of at most 240 s, for WAV and MP3 alike; whole-song mixing and export are the follow-up (#48). The fields start at 0–30 s; if the first stem is shorter and the end is untouched, the whole stem is used.
+- Memory admission before anything is unpacked: WAV entries at most 256 MiB, MP3 entries at most 64 MiB, mix at most 96 MiB, and entry + estimated excerpt + mix at most 512 MiB. Before sample-rate conversion, decoded + converted + mix must also fit; the raw entry is released first. By construction the JavaScript-side peak stays below about 450 MiB per build.
+- A later stem that ends inside the selected passage is a length mismatch: refused unless the mismatch box is ticked, then padded with silence.
 - The whole compressed ZIP entry is held in memory during a build (about 10–20 MB per stem for the Viking set).
 - Native decoder memory is not measured by any automated check. Chrome's Task Manager reading (step 7) is the evidence.
 - MP3 timing follows the decoder-output timeline: encoder delay is not removed, identically for every MP3 stem. Mixing MP3 with WAV stems stays blocked.

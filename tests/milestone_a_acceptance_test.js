@@ -228,7 +228,7 @@ async function settle(h,ms=120000){
   // 5. Fail-closed boundaries.
   h.el('stemClipStart').value='0';h.el('stemClipEnd').value='0';
   h.el('stemBuild').fire('click');await settle(h);
-  assert.match(h.el('stemStatus').textContent,/finite selected passage/,'full-length MP3 refused');
+  assert.match(h.el('stemStatus').textContent,/Choose a preview passage: set a preview end after the start/,'end 0 (whole song) refused with guidance');
   h.el('stemClipStart').value='479';h.el('stemClipEnd').value='481';
   h.el('stemBuild').fire('click');await settle(h);
   assert.match(h.el('stemStatus').textContent,/outside the first stem duration \(480\.00 seconds\)/,h.el('stemStatus').textContent);

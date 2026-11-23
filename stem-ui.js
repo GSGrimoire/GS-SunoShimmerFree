@@ -6,6 +6,18 @@
   var Zip = root.SunoStemZip, Wav = root.WavCodec, Engine = root.ShimmerEngine,
     Resample = root.SunoStemResample;
   var MAX_MIX_BYTES = 96 * 1024 * 1024;
+  // Milestone A previews a finite excerpt only. Admission is checked before
+  // any ZIP entry is unpacked and again before sample-rate conversion:
+  // compressed/raw entry + decoded excerpt + converted excerpt + mix must fit.
+  var MAX_PREVIEW_SECONDS = 240, DEFAULT_PREVIEW_END = 30;
+  var MAX_WAV_ENTRY_BYTES = 256 * 1048576, MAX_MP3_ENTRY_BYTES = 64 * 1048576;
+  var MAX_LIVE_BYTES = 512 * 1048576;
+  var clipEndTouched = false;
+  function admit(label, bytes) {
+    if (!Number.isSafeInteger(bytes) || bytes < 0 || bytes > MAX_LIVE_BYTES)
+      throw new Error(label + ' would need about ' + (bytes / 1048576).toFixed(0) +
+        ' MiB at once, above the ' + (MAX_LIVE_BYTES / 1048576) + ' MiB preview budget. Choose a shorter passage.');
+  }
   var current = null, generation = 0, worker = null;
   var context = null, buffer = null, source = null, startedAt = 0, position = 0, playing = false;
   var audioLabel = '', busy = false, timer = 0, objectUrl = null, pendingProcessAbort = null, pendingSourceAbort = null;
@@ -37,8 +49,8 @@
       '<label class="stem-allow"><input type="checkbox" id="stemAllowMismatch"> Allow zero-padding or trimming of mismatched stem lengths/rates (never time-shift stems)</label>',
       '<div class="stem-build"><label for="stemClipStart">Preview start (seconds)</label>',
       '<input id="stemClipStart" type="number" min="0" step="0.1" value="0" class="stem-seconds">',
-      '<label for="stemClipEnd">Preview end (seconds; 0 means full length)</label>',
-      '<input id="stemClipEnd" type="number" min="0" step="0.1" value="0" class="stem-seconds">',
+      '<label for="stemClipEnd">Preview end (seconds; up to ' + MAX_PREVIEW_SECONDS + ' s after the start)</label>',
+      '<input id="stemClipEnd" type="number" min="0" step="0.1" value="' + DEFAULT_PREVIEW_END + '" class="stem-seconds">',
       '<button type="button" id="stemBuild">Build selected mix or passage</button>',
       '<span id="stemMixInfo" class="stem-note">No mix built.</span></div>',
       '<div class="stem-playback"><button type="button" id="stemPlay">Play preview</button>',
@@ -88,7 +100,7 @@
     });
     $('stemAllowMismatch').addEventListener('change', invalidate);
     $('stemClipStart').addEventListener('change', invalidate);
-    $('stemClipEnd').addEventListener('change', invalidate);
+    $('stemClipEnd').addEventListener('change', function() { clipEndTouched = true; invalidate(); });
   }
   function memoryReport(decodedBytes, previewBytes, label) {
     // These are explicit buffer sizes, NOT a measurement of process memory.
@@ -195,7 +207,7 @@
     $('stemList').replaceChildren(); $('stemArchive').hidden = true; $('stemWarnings').hidden = true;
     $('stemMixInfo').textContent = 'No mix built.';
     $('stemAllowMismatch').checked = false;
-    $('stemClipStart').value = '0'; $('stemClipEnd').value = '0';
+    $('stemClipStart').value = '0'; $('stemClipEnd').value = String(DEFAULT_PREVIEW_END); clipEndTouched = false;
     var gen = generation;
     current = null; status('Inspecting ' + file.name + ' locally...');
     renderActions();
@@ -372,13 +384,21 @@
       if (gen !== generation) abort();
     });
   }
-  async function decodeStem(stem, gen, targetRate, clipStart, clipEnd) {
+  async function decodeStem(stem, gen, targetRate, clipStart, clipEnd, liveBytes) {
+    liveBytes = liveBytes || 0;
     // The ZIP reader otherwise materializes the entire uncompressed entry before
     // the MP3 decoder can apply its 64 MiB input cap. Reject from authenticated
     // central-directory metadata first; ZIP extraction still verifies CRC.
+    if (stem.wav && (!stem.entry || !Number.isSafeInteger(stem.entry.size) || stem.entry.size < 0 ||
+        stem.entry.size > MAX_WAV_ENTRY_BYTES))
+      throw new Error(stem.name + ': WAV entry exceeds the ' + (MAX_WAV_ENTRY_BYTES / 1048576) +
+        ' MiB unpack budget (it is unpacked whole). Use shorter or MP3 stems.');
+    if (stem.entry && Number.isSafeInteger(stem.entry.size))
+      admit(stem.name + ' (unpacked entry, estimated excerpt and mix)', stem.entry.size + liveBytes +
+        Math.ceil((clipEnd - clipStart) * (targetRate || 48000)) * 2 * 4);
     if (!stem.wav) {
       if (!stem.entry || !Number.isSafeInteger(stem.entry.size) || stem.entry.size < 0 ||
-          stem.entry.size > 64 * 1048576)
+          stem.entry.size > MAX_MP3_ENTRY_BYTES)
         throw new Error(stem.name + ': MP3 compressed source exceeds the 64 MiB scan budget.');
       if (!(clipEnd > clipStart && root.SunoStemMp3 && root.AudioDecoder &&
             root.EncodedAudioChunk))
@@ -401,6 +421,7 @@
       // Milestone A supports finite excerpts only, through bounded WebCodecs.
       throw new Error(stem.name + ': MP3 requires a finite selected passage and supported WebCodecs. Full-source or fallback decode is disabled to protect browser memory.');
     }
+    bytes = null; // release the unpacked entry before conversion and mixing
     ensureFresh(gen);
     if (data.channels.length < 1 || data.channels.length > 2)
       throw new Error(stem.name + ' has more than two channels. Stereo/mono stems are supported.');
@@ -416,6 +437,16 @@
       // Otherwise build() re-clips an already-excerpted buffer at an absolute
       // source offset, silently removing a mixed-rate stem.
       var originalSampleRate = data.sr;
+      // Admission for conversion output: decoded input, converted output and
+      // the mix are alive together. The raw entry has been released.
+      var inFrames = data.channels[0].length,
+        outFrames = Math.ceil(inFrames * targetRate / originalSampleRate) + 64,
+        decodedNow = data.channels.reduce(function(t,ch){return t + ch.byteLength;}, 0),
+        convertedBytes = outFrames * data.channels.length * 4;
+      if (convertedBytes > MAX_MIX_BYTES)
+        throw new Error(stem.name + ': sample-rate conversion output exceeds the ' + (MAX_MIX_BYTES / 1048576) +
+          ' MiB excerpt budget. Choose a shorter passage.');
+      admit(stem.name + ' (sample-rate conversion)', decodedNow + convertedBytes + liveBytes);
       data.channels = Resample.resample(data.channels, originalSampleRate, targetRate);
       if (data.passageStartFrame !== undefined)
         data.passageStartFrame = Math.round(data.passageStartFrame * targetRate / originalSampleRate);
@@ -574,16 +605,42 @@
         allocated=0, firstNativeRate=0;
       var clipStart=Number($('stemClipStart').value), clipEnd=Number($('stemClipEnd').value);
       if (!Number.isFinite(clipStart) || !Number.isFinite(clipEnd) ||
-          clipStart < 0 || clipEnd < 0 || (clipEnd !== 0 && clipEnd <= clipStart))
-        throw new Error('Preview range must have nonnegative, finite seconds and an end after the start. Use end 0 for full length.');
+          clipStart < 0 || clipEnd <= clipStart)
+        throw new Error('Choose a preview passage: set a preview end after the start, for example 462 to 474 seconds. ' +
+          'Milestone A previews a passage of up to ' + MAX_PREVIEW_SECONDS + ' seconds; whole-song mixing comes in a later version.');
+      if (clipEnd - clipStart > MAX_PREVIEW_SECONDS)
+        throw new Error('Preview passage is ' + (clipEnd - clipStart).toFixed(1) + ' seconds. Milestone A previews up to ' +
+          MAX_PREVIEW_SECONDS + ' seconds at a time; choose a shorter passage.');
       selected.forEach(validatePassage);
       for (var i=0;i<selected.length;i++) {
         ensureFresh(gen);
         var s=selected[i];
         status('Stem ' + (i+1) + ' of ' + selected.length + ': ' + s.name);
         var data;
-        try { data=await decodeStem(s,gen,rate || null,clipStart,clipEnd); }
-        catch (err) {
+        try {
+          try { data=await decodeStem(s,gen,rate || null,clipStart,clipEnd,allocated); }
+          catch (first) {
+            // A later stem that ends inside the selected passage is a length
+            // mismatch: refuse without consent, otherwise decode what exists
+            // and let the aligner pad the rest with silence.
+            if (first && first.code === 'PASSAGE_OUT_OF_RANGE' && rate &&
+                Number.isFinite(first.sourceSeconds) && first.sourceSeconds > clipStart) {
+              if (!$('stemAllowMismatch').checked)
+                throw new Error('Stem lengths differ: ' + s.name + ' ends at ' + first.sourceSeconds.toFixed(2) +
+                  ' seconds, inside the selected passage. Select the mismatch checkbox to permit start-aligned trimming/padding.');
+              data=await decodeStem(s,gen,rate,clipStart,first.sourceSeconds,allocated);
+            } else {
+            // Untouched default end on a first stem shorter than the default:
+            // preview the whole short stem instead of refusing.
+            if (!(first && first.code === 'PASSAGE_OUT_OF_RANGE' && !rate && !clipEndTouched &&
+                  clipEnd === DEFAULT_PREVIEW_END && Number.isFinite(first.sourceSeconds) &&
+                  first.sourceSeconds > clipStart)) throw first;
+            clipEnd = first.sourceSeconds;
+            $('stemClipEnd').value = String(+clipEnd.toFixed(3));
+            data=await decodeStem(s,gen,null,clipStart,clipEnd,allocated);
+            }
+          }
+        } catch (err) {
           // Bounded WAV/MP3 readers reject a passage beyond the source before
           // any decode; report it as a range problem, not a memory problem.
           if (err && err.code === 'PASSAGE_TOO_SHORT')
