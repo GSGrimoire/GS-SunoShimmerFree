@@ -79,10 +79,25 @@ for(const [field,value] of [[22,0],[22,20],[34,12],[32,0],[24,0]]) {
   const dv=new DataView(bytes.buffer);
   dv.setUint32(4,bytes.byteLength-8,true);
   dv.setUint32(16,40,true);dv.setUint16(20,65534,true);
-  dv.setUint16(36,22,true);dv.setUint16(38,32,true);
+  dv.setUint16(36,22,true);dv.setUint16(38,32,true);dv.setUint32(40,0,true);
   dv.setUint32(44,3,true);
   bytes.set([0,0,16,0,128,0,0,170,0,56,155,113],48);
   assert.equal(Wav.decodeWavPassage(bytes.buffer,0,.1,1048576).channels[0].length,4800);
+  // Fail closed on contradictory meaningful-bit and speaker-layout metadata.
+  for(const validBits of [0,1,31,33,65535]) {
+    dv.setUint16(38,validBits,true);
+    assert.throws(()=>Wav.decodeWavPassage(bytes.buffer,0,.1,1048576),/valid bits/);
+  }
+  dv.setUint16(38,32,true);
+  for(const mask of [0,3]) {
+    dv.setUint32(40,mask,true);
+    assert.equal(Wav.decodeWavPassage(bytes.buffer,0,.1,1048576).channels[0].length,4800);
+  }
+  for(const mask of [1,2,4,7,0x80000000]) {
+    dv.setUint32(40,mask,true);
+    assert.throws(()=>Wav.decodeWavPassage(bytes.buffer,0,.1,1048576),/channel mask/);
+  }
+  dv.setUint32(40,0,true);
   // The canonical 40-byte extensible format has exactly 22 extension bytes.
   // Contradictory lengths must not be silently accepted.
   for(const cbSize of [0,21,23,65535]) {
@@ -115,7 +130,7 @@ for(const [field,value] of [[22,0],[22,20],[34,12],[32,0],[24,0]]) {
   dv.setUint32(16,40,true);
   dv.setUint16(20,65534,true);
   dv.setUint16(36,22,true);
-  dv.setUint16(38,32,true);
+  dv.setUint16(38,32,true);dv.setUint32(40,0,true);
   dv.setUint32(44,3,true);
   bytes.set([0,0,16,0,128,0,0,170,0,56,155,113],48);
   assert.equal(Wav.decodeWavPassage(bytes.buffer,0,.1,1048576).channels[0].length,4800);
