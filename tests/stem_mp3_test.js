@@ -414,6 +414,35 @@ await (async()=>{
   }
   await assert.rejects(load(ProbeRejectDecoder).decodePassage(bytes,0,.1),/codec probe failed/);
   assert.equal(FakeDecoder.instances.length,before,'failed probe must not construct decoder');
+  // A codec-support promise can remain pending after user cancellation.
+  // The build must settle without constructing a decoder or waiting for it.
+  class NeverProbeDecoder extends FakeDecoder {
+    static isConfigSupported(){return new Promise(()=>{});}
+  }
+  const controller=new AbortController();
+  const pending=load(NeverProbeDecoder).decodePassage(bytes,0,.1,controller.signal);
+  await Promise.resolve();
+  controller.abort();
+  await assert.rejects(Promise.race([
+    pending,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error('codec probe abort timed out')),150))
+  ]),/MP3 decoding cancelled/);
+  assert.equal(FakeDecoder.instances.length,before,
+    'cancelled codec probe must not construct a decoder');
+  // A late rejection from the abandoned probe must be consumed.
+  let rejectProbe;
+  class LateRejectProbeDecoder extends FakeDecoder {
+    static isConfigSupported(){return new Promise((_,reject)=>{rejectProbe=reject;});}
+  }
+  const lateController=new AbortController();
+  const late=load(LateRejectProbeDecoder).decodePassage(bytes,0,.1,lateController.signal);
+  await Promise.resolve();
+  lateController.abort();
+  await assert.rejects(late,/MP3 decoding cancelled/);
+  rejectProbe(new Error('late codec probe rejection'));
+  await Promise.resolve();
+  assert.equal(FakeDecoder.instances.length,before,
+    'late probe completion must not allocate a decoder');
   const ok=await load(FakeDecoder).decodePassage(bytes,0,.1);
   assert.equal(ok.channels[0].length,Math.round(.1*44100));
   console.log('WebCodecs runtime codec support probe regressions passed.');
