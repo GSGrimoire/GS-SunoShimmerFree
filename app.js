@@ -277,6 +277,7 @@
     hideError();
     stopPlayback(); st.offset = 0;
     if (st.worker) { st.worker.terminate(); st.worker = null; }
+    st.busy = false;
     st.buffers = { original: null, clean: null, polish: null, removed: null }; st.specs = {}; st.applied = null; st.everCleaned = false;
     st.polishApplied = null;
     st.peaks = {}; st.peakMax = {};

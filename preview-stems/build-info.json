@@ -1,0 +1,8 @@
+{
+  "status": "experimental-unmerged-preview",
+  "variant": "stem-zip",
+  "source_branch": "feature/native-suno-stem-zip-v6",
+  "source_commit": "179ed0bf54f599c6963f601b5088e1dc53fab86e",
+  "production_unchanged": true,
+  "distinct_from_autoclean_preview": true
+}
