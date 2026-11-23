@@ -7,7 +7,15 @@ const root=path.resolve(__dirname,'..');
 const read=file=>fs.readFileSync(file,'utf8');
 const production=read(path.join(root,'index.html'));
 assert(!/id="autoClean"/.test(production),'production must not contain unfinished Auto Clean feature');
-assert(!/stem-zip\.js/.test(production),'production must not contain unfinished stem ZIP importer');
+// Milestone A (owner-authorized 23 Nov 2026) ships the stem importer to
+// production, but only visibly labelled as beta and excerpt-only.
+if (/stem-zip\.js/.test(production)) {
+  assert(/Import stems ZIP \(beta\)/.test(production),'production stem importer must be labelled beta');
+  const ui=read(path.join(root,'stem-ui.js'));
+  assert(/stem-beta">beta</.test(ui),'stem workspace heading must say beta');
+  assert(/MAX_PREVIEW_SECONDS = 240/.test(ui),'production stem workspace must be excerpt-only');
+  assert(!/0 means full length/.test(ui),'production must not offer unbounded whole-song stem decode');
+}
 
 function verify(directory,opts){
  const preview=path.join(root,directory),html=read(path.join(preview,'index.html'));

@@ -38,7 +38,7 @@ function harness(){
  }
  for(const id of ids)nodes.set(id,new E(id));
  const el=id=>{assert(nodes.has(id),'missing html element '+id);return nodes.get(id);};
- const modes=['original','clean','removed'];
+ const modes=['original','clean','polish','removed'];
  const tiles={};
  for(const name of modes){radios[name]=new E('radio-'+name);radios[name].value=name;
    tiles[name]={className:'tile tile-'+name,innerHTML:''};}
@@ -78,7 +78,9 @@ function harness(){
  const Engine={VERSION:'1',DEFAULTS:{
    denoise:true,denoiseStrength:1,maxAttenDb:7,quietPct:12,bassHz:350,
    shimmer:.6,shimmerMaxDb:6,shimmerFromHz:4000}};
+ // index.html loads Sound Polish and loudness before app.js; so does this page.
  const window={ShimmerEngine:Engine,ShimmerEdit:Ed,WavCodec:Wav,AudioContext:AC,
+   SunoPolish:require('../polish.js'),SunoLoudness:require('../loudness.js'),
    addEventListener:noop,devicePixelRatio:1};
  const context={window,document,Worker,AudioBuffer:AB,Float32Array,Uint8Array,
    Uint8ClampedArray,ArrayBuffer,Blob,URL:{createObjectURL:()=> 'blob:test',revokeObjectURL:noop},

@@ -52,3 +52,5 @@ body.has-stem-workspace { overflow: hidden; }
   .stem-playback label { width: 100%; }
   .stem-nav .pill { font-size: .72rem; }
 }
+
+.stem-beta{display:inline-block;margin-left:.4em;padding:0 .45em;border-radius:999px;font-size:.6em;vertical-align:middle;letter-spacing:.04em;text-transform:uppercase;border:1px solid currentColor;opacity:.8}

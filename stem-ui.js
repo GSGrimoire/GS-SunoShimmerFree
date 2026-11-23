@@ -33,7 +33,7 @@
     box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'stemHeading');
     box.innerHTML = [
       '<div class="stem-panel">',
-      '<header class="stem-head"><div><h2 id="stemHeading">Suno stems</h2><p>ZIP import, local processing and reconstruction</p></div>',
+      '<header class="stem-head"><div><h2 id="stemHeading">Suno stems <span class="stem-beta">beta</span></h2><p>Preview and export a passage of up to 240 seconds. Waveforms and whole-song mixing come next.</p></div>',
       '<div class="stem-head-buttons"><button id="stemNew" type="button">Choose another ZIP</button>',
       '<input id="stemNewFile" type="file" accept=".zip,application/zip" hidden>',
       '<button id="stemClose" type="button" aria-label="Close stem workspace">Close</button></div></header>',
