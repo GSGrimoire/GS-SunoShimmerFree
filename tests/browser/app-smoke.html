@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SSF full-app browser acceptance</title>
+<style>
+  body{font:15px/1.5 system-ui,sans-serif;max-width:52rem;margin:2rem auto;padding:0 1rem}
+  table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+  td,th{border-bottom:1px solid #ddd;padding:.3rem .4rem;text-align:left;vertical-align:top}
+  .pass{color:#0a6b2f;font-weight:600}.fail{color:#b00020;font-weight:600}
+  #verdict{font-size:1.3rem;margin:1rem 0}
+  iframe{width:100%;height:420px;border:1px solid #ccc;margin-top:1rem}
+</style>
+<h1>SSF full-app browser acceptance</h1>
+<p>Loads the real production page (<code>../../index.html</code>, with its Content-Security-Policy) in the frame below
+and drives it: a short single-track clean, then the ten Viking stems as a ZIP through the stem workspace.
+The exported 32-bit float WAV is compared with an independent mix decoded here. Nothing is uploaded. Takes 1–2 minutes.</p>
+<p id="env">Starting...</p>
+<div id="verdict">Running...</div>
+<table><thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead><tbody id="rows"></tbody></table>
+<iframe id="app" src="../../index.html" title="Production page under test"></iframe>
+<script src="../../stem-mp3.js"></script>
+<script>
+'use strict';
+const rows=document.getElementById('rows'),results=[];
+function row(name,ok,detail){results.push({name,ok});const tr=document.createElement('tr');
+  for(const [t,c] of [[name,''],[ok?'PASS':'FAIL',ok?'pass':'fail'],[String(detail),'']]){const td=document.createElement('td');td.textContent=t;if(c)td.className=c;tr.append(td);}
+  rows.append(tr);}
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function until(fn,ms,label){const t=performance.now();while(performance.now()-t<ms){try{const v=fn();if(v)return v;}catch(_){}await wait(50);}throw new Error('timeout: '+label);}
+const STEMS=['0 Lead Vocals','1 Drums','2 Bass','3 Keyboard','4 Percussion','5 Strings','6 Synth','7 Other','8 Brass','9 Woodwinds'];
+const fixtures=new URLSearchParams(location.search).get('fixtures')||
+  (location.pathname.match(/^\/(b|pr)\/[^/]+\//)?'/main/example-files/viking-shimmer/':'../../example-files/viking-shimmer/');
+const CRC=new Uint32Array(256).map((_,n)=>{let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;return c>>>0;});
+function crc32(b){let c=~0;for(let i=0;i<b.length;i++)c=CRC[(c^b[i])&255]^(c>>>8);return (~c)>>>0;}
+function storedZip(files){
+  const parts=[],central=[];let offset=0;const enc=new TextEncoder();
+  for(const [name,data] of files){const n=enc.encode(name),crc=crc32(data);
+    const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint32(14,crc,true);
+    h.setUint32(18,data.length,true);h.setUint32(22,data.length,true);h.setUint16(26,n.length,true);parts.push(h.buffer,n,data);
+    const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);
+    c.setUint32(16,crc,true);c.setUint32(20,data.length,true);c.setUint32(24,data.length,true);c.setUint16(28,n.length,true);
+    c.setUint32(42,offset,true);central.push(c.buffer,n);offset+=30+n.length+data.length;}
+  const size=central.reduce((t,x)=>t+(x.byteLength||x.length),0),e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,size,true);e.setUint32(16,offset,true);
+  return new Blob([...parts,...central,e.buffer],{type:'application/zip'});
+}
+function wavFile(seconds,sr){const n=seconds*sr,b=new ArrayBuffer(44+n*4),v=new DataView(b),w=(o,s)=>{for(let i=0;i<4;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  w(0,'RIFF');v.setUint32(4,36+n*4,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,2,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*4,true);v.setUint16(32,4,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*4,true);
+  for(let i=0;i<n;i++){const s=Math.round(8000*Math.sin(2*Math.PI*440*i/sr)+((i*7919)%997-498));v.setInt16(44+i*4,s,true);v.setInt16(46+i*4,s,true);}
+  return new File([b],'Smoke tone.wav',{type:'audio/wav'});}
+function floatWav(ab){const v=new DataView(ab);let o=12,fmt=null;
+  while(o+8<=ab.byteLength){const id=String.fromCharCode(...new Uint8Array(ab,o,4)),n=v.getUint32(o+4,true);
+    if(id==='fmt ')fmt={code:v.getUint16(o+8,true),ch:v.getUint16(o+10,true),sr:v.getUint32(o+12,true),bits:v.getUint16(o+22,true)};
+    if(id==='data'){const f=new Float32Array(ab.slice(o+8,o+8+n));const ch=Array.from({length:fmt.ch},(_,c)=>Float32Array.from({length:f.length/fmt.ch},(_,i)=>f[i*fmt.ch+c]));return {fmt,ch};}
+    o+=8+n+(n&1);}
+  throw new Error('no data chunk');}
+(async()=>{
+  const ua=(navigator.userAgent.match(/(Firefox|Edg|Chrome|Version)\/[\d.]+/g)||[]).join(' ');
+  document.getElementById('env').textContent='Browser: '+ua+' · page '+location.pathname;
+  const frame=document.getElementById('app');
+  try{
+    await until(()=>frame.contentDocument&&frame.contentDocument.readyState==='complete'&&frame.contentWindow.SunoStemUI,15000,'production page load');
+    const W=frame.contentWindow,D=frame.contentDocument;
+    const csp=D.querySelector('meta[http-equiv="Content-Security-Policy"]');
+    row('Production page loads with its security policy',!!csp&&!!W.SunoShimmerFree&&!!W.SunoPolish&&!!W.SunoStemMp3,
+      csp?'CSP active; app, Sound Polish and stem modules loaded':'no CSP meta found');
+    const beta=/Import stems ZIP \(beta\)/.test(D.body.textContent);
+    row('Stem import is labelled beta',beta,beta?'button reads "Import stems ZIP (beta)"':'label missing');
+    // Single-track: import a 3 s WAV and let the cleaning worker finish.
+    const dt=new DataTransfer();dt.items.add(wavFile(3,48000));
+    const input=D.getElementById('file');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+    const t0=performance.now();
+    await until(()=>!/Not cleaned yet/.test(D.getElementById('metaClean').textContent)&&D.getElementById('export').hidden===false,60000,'single-track clean');
+    row('Single-track tool: import and clean in a worker',true,'cleaned in '+Math.round(performance.now()-t0)+' ms; export panel shown');
+    // Stems: build the ZIP, open the workspace, preview 462-474 s.
+    const files=[];for(const s of STEMS){const r=await fetch(fixtures+encodeURIComponent(s)+'.mp3');if(!r.ok)throw new Error('fixture '+s+' '+r.status);files.push([s+'.mp3',new Uint8Array(await r.arrayBuffer())]);}
+    const zip=new File([storedZip(files)],'Epic Viking Ambience stems.zip',{type:'application/zip'});
+    W.SunoStemUI.open(zip);
+    await until(()=>/10 distinct stems/.test(D.getElementById('stemArchive').textContent),20000,'archive inspection');
+    row('Stem ZIP opens with ten stems',true,D.getElementById('stemArchive').textContent);
+    const defEnd=D.getElementById('stemClipEnd').value;
+    row('Preview fields start at 0–30 s',D.getElementById('stemClipStart').value==='0'&&defEnd==='30','start '+D.getElementById('stemClipStart').value+', end '+defEnd);
+    D.getElementById('stemClipStart').value='462';D.getElementById('stemClipEnd').value='474';
+    D.getElementById('stemClipEnd').dispatchEvent(new Event('change'));
+    const heap0=performance.memory?performance.memory.usedJSHeapSize:0;
+    const b0=performance.now();D.getElementById('stemBuild').click();
+    await until(()=>/Ready to play\/export|Could not build/.test(D.getElementById('stemStatus').textContent),120000,'stem build');
+    const ready=/Ready to play\/export/.test(D.getElementById('stemStatus').textContent);
+    row('Build 462–474 s with all ten stems',ready,ready?('built in '+Math.round(performance.now()-b0)+' ms; '+D.getElementById('stemMemory').textContent):D.getElementById('stemStatus').textContent);
+    // Export 32-bit float WAV through the real button; capture the Blob.
+    let captured=null;const orig=W.URL.createObjectURL.bind(W.URL);
+    W.URL.createObjectURL=b=>{captured=b;return orig(b);};
+    D.getElementById('stemBits').value='32';D.getElementById('stemExport').click();
+    await until(()=>captured,10000,'export blob');
+    W.URL.createObjectURL=orig;
+    const out=floatWav(await captured.arrayBuffer());
+    // Independent reference: decode each passage here and sum at unity gain in ZIP order.
+    const N=12*48000,ref=[new Float32Array(N),new Float32Array(N)];
+    for(const [,bytes] of files){const p=await self.SunoStemMp3.decodePassage(bytes,462,474);
+      for(let i=0;i<N;i++){ref[0][i]+=p.channels[0][i]*1;ref[1][i]+=p.channels[1][i]*1;}}
+    let mx=0,energy=0;for(let c=0;c<2;c++)for(let i=0;i<N;i++){const d=Math.abs(out.ch[c][i]-ref[c][i]);if(!(d<=mx))mx=d;energy+=ref[c][i]**2;}
+    const okWav=out.fmt.code===3&&out.fmt.bits===32&&out.fmt.sr===48000&&out.ch[0].length===N&&mx===0&&energy>0;
+    row('Exported 32-bit float WAV == independent mix',okWav,'format '+out.fmt.code+'/'+out.fmt.bits+' bit, '+out.fmt.sr+' Hz, '+out.ch[0].length+' frames, max diff '+mx);
+    // Cancel mid-build, then rebuild.
+    D.getElementById('stemClipStart').value='300';D.getElementById('stemClipEnd').value='330';D.getElementById('stemClipEnd').dispatchEvent(new Event('change'));
+    D.getElementById('stemBuild').click();await wait(400);D.getElementById('stemStop').click();await wait(300);
+    const cancelled=/cancelled/i.test(D.getElementById('stemStatus').textContent)&&D.getElementById('stemExport').disabled;
+    row('Cancel during build',cancelled,D.getElementById('stemStatus').textContent);
+    D.getElementById('stemBuild').click();
+    await until(()=>/Ready to play\/export|Could not build/.test(D.getElementById('stemStatus').textContent),120000,'rebuild');
+    row('Rebuild after cancel',/Ready to play\/export/.test(D.getElementById('stemStatus').textContent),D.getElementById('stemStatus').textContent);
+    // Whole song is refused with guidance.
+    D.getElementById('stemClipStart').value='0';D.getElementById('stemClipEnd').value='0';D.getElementById('stemBuild').click();
+    await until(()=>/Choose a preview passage/.test(D.getElementById('stemStatus').textContent),5000,'end 0 message');
+    row('Whole-song request refused with guidance',true,D.getElementById('stemStatus').textContent);
+    row('JavaScript heap (Chromium only, informational)',true,performance.memory?('during build '+(heap0/1048576).toFixed(0)+' → '+(performance.memory.usedJSHeapSize/1048576).toFixed(0)+' MiB; native memory: use the browser Task Manager'):'not reported');
+  }catch(err){row('Run',false,err.message||err);}
+  const failed=results.filter(r=>!r.ok).length,v=document.getElementById('verdict');
+  v.textContent=failed?'FAILED: '+failed+' of '+results.length+' checks':'PASSED: all '+results.length+' checks';
+  v.className=failed?'fail':'pass';document.title=(failed?'FAIL':'PASS')+' · SSF full-app browser acceptance';
+})();
+</script>
+</html>

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Milestone A acceptance gate: one command, one exit code.
 //   node tests/run_acceptance_gate.js
-// Runs every tests/*_test.js (edit_test.js needs a WAV argument and is run
+// Runs every tests/*_test.js and tests/security/*.test.mjs (edit_test.js needs a WAV argument and is run
 // separately by its own workflow), REQUIRES ffmpeg and the ten Viking
 // fixtures (SSF_VIKING_DIR or example-files/viking-shimmer), so no check can
 // pass by skipping. Prints the exact commit, Node and FFmpeg versions, and a
@@ -35,6 +35,10 @@ function verdict({failed, total, commit, dirty}) {
 function main() {
   const dir=__dirname, repo=path.join(dir,'..');
   const tests=fs.readdirSync(dir).filter(f=>f.endsWith('_test.js')&&f!=='edit_test.js').sort();
+  // Security regressions (issue #36) use node:test and live in tests/security.
+  const secDir=path.join(dir,'security');
+  if (fs.existsSync(secDir))
+    for (const f of fs.readdirSync(secDir).filter(f=>/\.test\.m?js$/.test(f)).sort()) tests.push('security/'+f);
   const sh=(c,a)=>{const r=cp.spawnSync(c,a,{cwd:repo,encoding:'utf8'});return r.status===0?r.stdout.trim():null;};
   const commit=sh('git',['rev-parse','HEAD']), status=sh('git',['status','--porcelain']);
   const dirty=status===null||status!=='';
@@ -45,7 +49,8 @@ function main() {
   let failed=0;
   for (const t of tests) {
     const start=Date.now();
-    const r=cp.spawnSync(process.execPath,[path.join(dir,t)],{cwd:repo,encoding:'utf8',
+    const args=t.startsWith('security/')?['--test',path.join(dir,t)]:[path.join(dir,t)];
+    const r=cp.spawnSync(process.execPath,args,{cwd:repo,encoding:'utf8',
       env:{...process.env,SSF_REQUIRE_FIXTURES:'1'},timeout:20*60*1000,maxBuffer:64<<20});
     const out=(r.stdout||'')+(r.stderr||''), ok=suiteOk(r.status,out), secs=((Date.now()-start)/1000).toFixed(1);
     console.log('  '+(ok?'PASS':'FAIL')+'  '+t.padEnd(36)+secs.padStart(6)+' s');
