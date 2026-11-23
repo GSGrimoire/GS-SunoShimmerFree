@@ -15,7 +15,7 @@ export function appendWaveformPeaks(state, interleaved, startFrame) {
   if (![channels, framesPerBucket, maxBuckets, nextFrame].every(Number.isSafeInteger) || channels < 1 || channels > 2 || framesPerBucket < 1 || maxBuckets < 1 || maxBuckets > MAX_WAVEFORM_BUCKETS || nextFrame < 0) throw new TypeError('state dimensions');
   if (!(interleaved instanceof Float32Array) || interleaved.length % channels !== 0) throw new TypeError('interleaved');
   const frames = interleaved.length / channels;
-  if (frames > MAX_WAVEFORM_FRAMES || !Number.isSafeInteger(startFrame) || startFrame !== nextFrame || !Number.isSafeInteger(nextFrame + frames)) throw new RangeError('frame sequence');
+  if (frames === 0 || frames > MAX_WAVEFORM_FRAMES || !Number.isSafeInteger(startFrame) || startFrame !== nextFrame || !Number.isSafeInteger(nextFrame + frames)) throw new RangeError('frame sequence');
   if (!Number.isSafeInteger(state.pending.count) || state.pending.count < 0 || state.pending.count >= framesPerBucket || !Number.isFinite(state.pending.min) || !Number.isFinite(state.pending.max)) throw new TypeError('pending');
   const required = Math.floor((state.pending.count + frames) / framesPerBucket);
   if (state.buckets.length + required > maxBuckets) throw new RangeError('waveform capacity');
