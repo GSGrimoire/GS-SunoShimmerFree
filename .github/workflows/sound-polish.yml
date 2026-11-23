@@ -32,6 +32,9 @@ on:
       - 'tests/stem_ui_test.js'
       - 'tests/stem_mp3_test.js'
       - 'tests/stem_mp3_ffmpeg_parity_test.js'
+      - 'tests/run_acceptance_gate.js'
+      - 'tests/milestone_a_acceptance_test.js'
+      - 'tests/stem_wav_passage_test.js'
       - 'tests/stem_resample_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
@@ -66,6 +69,9 @@ on:
       - 'tests/stem_ui_test.js'
       - 'tests/stem_mp3_test.js'
       - 'tests/stem_mp3_ffmpeg_parity_test.js'
+      - 'tests/run_acceptance_gate.js'
+      - 'tests/milestone_a_acceptance_test.js'
+      - 'tests/stem_wav_passage_test.js'
       - 'tests/stem_resample_test.js'
       - 'tests/polish_integration_test.js'
       - '.github/workflows/sound-polish.yml'
@@ -90,6 +96,10 @@ jobs:
         run: node tests/stem_mp3_test.js
       - name: Test indexed MP3 seek parity against FFmpeg (skips without ffmpeg or Viking fixtures)
         run: node tests/stem_mp3_ffmpeg_parity_test.js
+      - name: Test bounded WAV passage reader and hostile headers
+        run: node tests/stem_wav_passage_test.js
+      - name: Milestone A end-to-end acceptance (skips without ffmpeg or Viking fixtures)
+        run: node tests/milestone_a_acceptance_test.js
       - name: Test synthetic stem browser workspace and export flows
         run: node tests/stem_ui_test.js
       - name: Test linked dynamics, bypass and peak safety

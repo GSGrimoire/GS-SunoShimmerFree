@@ -19,9 +19,10 @@ const vm=require('node:vm');
 // branch's ancestry predates them.
 const dir=process.env.SSF_VIKING_DIR||path.join(__dirname,'../example-files/viking-shimmer');
 const probe=cp.spawnSync('ffmpeg',['-version']);
-if (probe.error || probe.status!==0) { console.log('SKIP: ffmpeg not available.'); process.exit(0); }
+function skip(why){ if (process.env.SSF_REQUIRE_FIXTURES==='1'){console.error('FAIL: '+why);process.exit(1);} console.log('SKIP: '+why);process.exit(0); }
+if (probe.error || probe.status!==0) skip('ffmpeg not available.');
 const files=fs.existsSync(dir)?fs.readdirSync(dir).filter(f=>f.endsWith('.mp3')).sort():[];
-if (!files.length) { console.log('SKIP: Viking MP3 fixtures not present.'); process.exit(0); }
+if (!files.length) skip('Viking MP3 fixtures not present.');
 
 function ffmpegDecode(buf) {
   const r=cp.spawnSync('ffmpeg',['-v','error','-f','mp3','-i','pipe:0',
