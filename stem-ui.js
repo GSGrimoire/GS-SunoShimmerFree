@@ -581,7 +581,18 @@
         ensureFresh(gen);
         var s=selected[i];
         status('Stem ' + (i+1) + ' of ' + selected.length + ': ' + s.name);
-        var data=await decodeStem(s,gen,rate || null,clipStart,clipEnd);
+        var data;
+        try { data=await decodeStem(s,gen,rate || null,clipStart,clipEnd); }
+        catch (err) {
+          // Bounded WAV/MP3 readers reject a passage beyond the source before
+          // any decode; report it as a range problem, not a memory problem.
+          if (err && err.code === 'PASSAGE_TOO_SHORT')
+            throw new Error('Preview range is shorter than one audio sample at this rate. Choose a longer interval.');
+          if (!err || err.code !== 'PASSAGE_OUT_OF_RANGE') throw err;
+          var secs=Number.isFinite(err.sourceSeconds) ? ' (' + err.sourceSeconds.toFixed(2) + ' seconds)' : '';
+          throw new Error(rate ? 'Preview passage is outside the duration of ' + s.name + secs + '.'
+            : 'Preview passage is outside the first stem duration' + secs + '.');
+        }
         ensureFresh(gen);
         var decodedBytes=data.channels.reduce(function(total,ch){return total+ch.byteLength;},0);
         largestDecodedBytes=Math.max(largestDecodedBytes,decodedBytes);

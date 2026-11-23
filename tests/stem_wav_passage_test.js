@@ -138,4 +138,17 @@ for(const [field,value] of [[22,0],[22,20],[34,12],[32,0],[24,0]]) {
   assert.throws(()=>Wav.decodeWavPassage(bytes.buffer,0,.1,1048576),/unaligned|format/);
 }
 
+{
+  // Range and too-short errors carry their own codes, so the workspace can
+  // say "outside the duration" instead of a misleading memory-budget error.
+  const bytes=fixture(2);
+  for (const [a,b] of [[1,3],[2,2.5],[5,0]]) {
+    assert.throws(()=>Wav.decodeWavPassage(bytes,a,b,1048576),
+      e=>e.code==='PASSAGE_OUT_OF_RANGE'&&e.sourceSeconds===2&&/outside the source duration \(2\.00 seconds\)/.test(e.message));
+  }
+  assert.throws(()=>Wav.decodeWavPassage(bytes,1,1+1/(4*sr),1048576),e=>e.code==='PASSAGE_TOO_SHORT');
+  // Genuine memory-budget failures keep the budget message and no range code.
+  assert.throws(()=>Wav.decodeWavPassage(bytes,0,2,1000),e=>!e.code&&/memory budget/.test(e.message));
+}
+
 console.log('Bounded WAV passage parity, late-window memory and hostile-header tests passed.');

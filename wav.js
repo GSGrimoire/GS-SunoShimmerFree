@@ -126,8 +126,19 @@
     var start=Math.round(startSeconds*fmt.sr);
     var end=endSeconds===0?sourceFrames:Math.round(endSeconds*fmt.sr);
     var count=end-start, decoded=count*fmt.ch*4, raw=count*stride;
-    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||
-       start>=sourceFrames||end>sourceFrames||count<1||
+    if(Number.isSafeInteger(start)&&Number.isSafeInteger(end)&&
+       (start>=sourceFrames||end>sourceFrames)){
+      // Out of range is a user input problem, not a memory problem: say so.
+      var outside=new Error('WAV passage is outside the source duration ('+
+        (sourceFrames/fmt.sr).toFixed(2)+' seconds).');
+      outside.code='PASSAGE_OUT_OF_RANGE';outside.sourceSeconds=sourceFrames/fmt.sr;
+      throw outside;
+    }
+    if(Number.isSafeInteger(count)&&count<1){
+      var short=new Error('WAV passage is shorter than one sample frame.');
+      short.code='PASSAGE_TOO_SHORT';throw short;
+    }
+    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||count<1||
        !Number.isSafeInteger(decoded)||decoded>maxBytes||
        !Number.isSafeInteger(raw)||raw+44>maxBytes)
       throw new Error('WAV passage exceeds source or memory budget.');

@@ -94,8 +94,12 @@
     if (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame) ||
         startFrame<0 || endFrame<=startFrame)
       throw new Error('MP3 seek requires a valid sample-frame interval.');
-    if (endFrame>index.sourceFrames)
-      throw new Error('Requested MP3 passage exceeds source duration.');
+    if (endFrame>index.sourceFrames || startFrame>=index.sourceFrames) {
+      var outside=new Error('Requested MP3 passage exceeds source duration.');
+      outside.code='PASSAGE_OUT_OF_RANGE';
+      outside.sourceSeconds=index.sourceFrames/index.rate;
+      throw outside;
+    }
     var keep=Math.floor(startFrame/1152), state=Math.max(0,keep-1);
     var last=Math.min(frames.length-1,Math.floor((endFrame-1)/1152)+GUARD_FRAMES);
     var earliest=state;
@@ -136,6 +140,10 @@
     var start=Math.round(startSeconds*first.rate), end=Math.round(endSeconds*first.rate);
     var frames=end-start, totalBytes=frames*first.channels*4;
     // Huge finite second values can round beyond precise sample-frame integers.
+    if (Number.isSafeInteger(frames) && frames<1) {
+      var short=new Error('MP3 passage sample-frame boundaries are invalid or unsafe.');
+      short.code='PASSAGE_TOO_SHORT'; throw short;
+    }
     if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
         !Number.isSafeInteger(frames) || frames<1)
       throw new Error('MP3 passage sample-frame boundaries are invalid or unsafe.');
