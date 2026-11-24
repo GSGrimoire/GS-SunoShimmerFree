@@ -147,6 +147,38 @@ class FakeDecoder {
 }
 await (async()=>{
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+  let probes=0;
+  class OverviewDecoder extends FakeDecoder {
+    static async isConfigSupported(config){probes++;return super.isConfigSupported(config);}
+  }
+  const root={AudioDecoder:OverviewDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:root,Uint8Array,Float32Array,ArrayBuffer,Array,Number,Math,Promise,setTimeout});
+  const borrowed=bytes.slice();
+  const source=await root.SunoStemMp3.openSource(borrowed);
+  assert.equal(source.frameCount,40*1152);
+  assert.equal(source.sampleRate,44100);
+  assert.equal(source.channelCount,2);
+  borrowed.fill(0); // A borrowed buffer must not alter the validated source.
+  const firstPending=source.decode(0,1152);
+  await assert.rejects(source.decode(0,1152),/already decoding/);
+  const first=await firstPending;
+  assert.equal(first.channels[0][0],.25);
+  assert.equal(OverviewDecoder.instances.at(-1).decoded[0].data[0],255);
+  const last=await source.decode(39*1152,40*1152);
+  assert.equal(last.passageStartFrame,39*1152);
+  assert.equal(last.channels[1][1151],-.125);
+  assert.equal(probes,1,'window reads reuse the source capability probe');
+  await assert.rejects(source.decode(0,40*1152+1),/exceeds source duration/);
+  const cancelled=new AbortController();cancelled.abort();
+  await assert.rejects(source.decode(0,1,cancelled.signal),/cancelled/);
+  const owned=bytes.slice().buffer;
+  await root.SunoStemMp3.openSource(owned,undefined,{takeOwnership:true});
+  if(typeof owned.transfer==='function') assert.equal(owned.byteLength,0);
+  console.log('Reusable MP3 source windows, stable input and probe reuse passed.');
+})();
+await (async()=>{
+  const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
   const root={AudioDecoder:FakeDecoder,EncodedAudioChunk:FakeChunk};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
     {self:root,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});

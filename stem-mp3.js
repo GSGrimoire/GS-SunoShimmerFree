@@ -122,45 +122,37 @@
       throw new Error('MP3 indexed passage exceeds the bounded decode budget.');
     return {feedStart:feed,keepFrame:keep,lastFrame:last,preRollFrames:keep-feed};
   }
-  async function decodePassage(input, startSeconds, endSeconds, signal) {
+  function ensureDecoder() {
     if (!root.AudioDecoder || !root.EncodedAudioChunk)
       throw new Error('Bounded MP3 preview requires browser WebCodecs AudioDecoder support.');
-    if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) ||
-        startSeconds<0 || endSeconds<=startSeconds)
-      throw new Error('Bounded MP3 preview requires a finite start and end time.');
+  }
+  function ensureActive(signal) {
     // A previously cancelled request must not inspect an entire compressed source.
     if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
+  }
+  function boundedBytes(input) {
     var bytes=input instanceof Uint8Array?input:new Uint8Array(input);
     // A bounded output does not bound the cost of scanning a compressed source.
     // This cap applies to the already-extracted input, not ZIP extraction memory.
     if (bytes.byteLength>64*1048576)
       throw new Error('MP3 compressed source exceeds the 64 MiB scan budget.');
-    var offset=startOfFrames(bytes), first=header(bytes,offset);
-    if (!first) throw new Error('Unsupported MP3 framing: MPEG-1 Layer III is required.');
-    var start=Math.round(startSeconds*first.rate), end=Math.round(endSeconds*first.rate);
-    var frames=end-start, totalBytes=frames*first.channels*4;
+    return bytes;
+  }
+  function checkPassage(start, end, channelCount) {
+    var frames=end-start, totalBytes=frames*channelCount*4;
     // Huge finite second values can round beyond precise sample-frame integers.
     if (Number.isSafeInteger(frames) && frames<1) {
       var short=new Error('MP3 passage sample-frame boundaries are invalid or unsafe.');
       short.code='PASSAGE_TOO_SHORT'; throw short;
     }
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start<0 ||
         !Number.isSafeInteger(frames) || frames<1)
       throw new Error('MP3 passage sample-frame boundaries are invalid or unsafe.');
     if (!Number.isSafeInteger(totalBytes) || totalBytes>96*1048576)
       throw new Error('MP3 passage exceeds the 96 MiB decoded output budget.');
-    // Validate the complete framing before any codec probe: MPEG-1 Layer III
-    // only, constant rate/layout, no CRC, no Xing/Info gapless metadata
-    // (its encoder delay is not applied), and every bit-reservoir reference
-    // resolvable. The index also gives the source duration and seek offsets.
-    var index;
-    try { index=await indexFrames(bytes,signal); }
-    catch (err) {
-      if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
-      throw err;
-    }
-    if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
-    var plan=planSeek(index,start,end);
+    return frames;
+  }
+  async function probeDecoder(first, signal) {
     // Browser implementations differ. A constructor existing does not prove
     // MPEG-1 Layer III support; reject unsupported configurations before
     // allocating output planes or feeding compressed user media.
@@ -188,7 +180,63 @@
     });
     if (!support || support.supported !== true)
       throw new Error('Browser WebCodecs MP3 decoder configuration is unsupported.');
-    if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.');
+    ensureActive(signal);
+    return config;
+  }
+  async function decodePassage(input, startSeconds, endSeconds, signal) {
+    ensureDecoder();
+    if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) ||
+        startSeconds<0 || endSeconds<=startSeconds)
+      throw new Error('Bounded MP3 preview requires a finite start and end time.');
+    ensureActive(signal);
+    var bytes=boundedBytes(input);
+    var first=header(bytes,startOfFrames(bytes));
+    if (!first) throw new Error('Unsupported MP3 framing: MPEG-1 Layer III is required.');
+    var start=Math.round(startSeconds*first.rate), end=Math.round(endSeconds*first.rate);
+    var frames=checkPassage(start,end,first.channels);
+    // Validate the complete framing before probing or constructing a decoder.
+    var index;
+    try { index=await indexFrames(bytes,signal); }
+    catch (err) { ensureActive(signal); throw err; }
+    ensureActive(signal);
+    var plan=planSeek(index,start,end);
+    var config=await probeDecoder(first,signal);
+    return decodeIndexed(bytes,index,start,end,frames,plan,config,signal);
+  }
+  // Retain one validated compressed source and its private frame index for a
+  // sequential scan. Transfer the ZIP reader's private ArrayBuffer when the
+  // caller explicitly gives it up; otherwise snapshot it before indexing.
+  async function openSource(input, signal, options) {
+    ensureDecoder();
+    ensureActive(signal);
+    if (!(input instanceof Uint8Array) && !(input instanceof ArrayBuffer))
+      throw new TypeError('MP3 overview source must contain an ArrayBuffer or Uint8Array.');
+    var view=boundedBytes(input), bytes;
+    if (options && options.takeOwnership && input instanceof ArrayBuffer &&
+        typeof input.transfer==='function')
+      bytes=new Uint8Array(input.transfer());
+    else if (options && options.takeOwnership && input instanceof ArrayBuffer &&
+        typeof root.structuredClone==='function')
+      bytes=new Uint8Array(root.structuredClone(input,{transfer:[input]}));
+    else bytes=new Uint8Array(view);
+    var index;
+    try { index=await indexFrames(bytes,signal); }
+    catch (err) { ensureActive(signal); throw err; }
+    ensureActive(signal);
+    var config=await probeDecoder(index,signal), busy=false;
+    return Object.freeze({sampleRate:index.rate,frameCount:index.sourceFrames,
+      channelCount:index.channels,decode:async function(start,end,decodeSignal) {
+        ensureActive(decodeSignal);
+        if (busy) throw new Error('MP3 source is already decoding a passage.');
+        var frames=checkPassage(start,end,index.channels), plan=planSeek(index,start,end);
+        busy=true;
+        try { return await decodeIndexed(bytes,index,start,end,frames,plan,config,decodeSignal); }
+        finally { busy=false; }
+      }});
+  }
+  async function decodeIndexed(bytes,index,start,end,frames,plan,config,signal) {
+    ensureActive(signal);
+    var first=index;
     var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
     var decoder, failure=null, count=0;
     var firstAllowed=plan.feedStart*1152, latestFirst=plan.keepFrame*1152;
@@ -284,7 +332,7 @@
       try {decoder.close();}catch(_){}
     }
   }
-  var api={decodePassage:decodePassage,indexFrames:indexFrames,planSeek:planSeek,header:header,startOfFrames:startOfFrames};
+  var api={decodePassage:decodePassage,openSource:openSource,indexFrames:indexFrames,planSeek:planSeek,header:header,startOfFrames:startOfFrames};
   if (typeof module!=='undefined' && module.exports) module.exports=api;
   else root.SunoStemMp3=api;
 })(typeof self!=='undefined'?self:this);

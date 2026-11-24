@@ -151,4 +151,27 @@ for(const [field,value] of [[22,0],[22,20],[34,12],[32,0],[24,0]]) {
   assert.throws(()=>Wav.decodeWavPassage(bytes,0,2,1000),e=>!e.code&&/memory budget/.test(e.message));
 }
 
-console.log('Bounded WAV passage parity, late-window memory and hostile-header tests passed.');
+{
+  const bytes=fixture(2), baseline=Wav.decodeWav(bytes);
+  const source=Wav.openPassageSource(bytes);
+  const {sampleRate,frameCount,channelCount}=source;
+  assert.equal(sampleRate,baseline.sampleRate);
+  assert.equal(frameCount,baseline.channels[0].length);
+  assert.equal(channelCount,2);
+  new Uint8Array(bytes).fill(0);
+  for(const [a,b] of [[0,800],[801,810],[frameCount-13,frameCount]]) {
+    const out=source.decode(a,b);
+    assert.equal(out.passageStartFrame,a);
+    assert.equal(out.sourceFrames,frameCount);
+    assert.deepEqual(out.channels,baseline.channels.map(ch=>ch.slice(a,b)));
+  }
+  assert.throws(()=>source.decode(-1,1),/budget/);
+  assert.throws(()=>source.decode(0,frameCount+1),e=>e.code==='PASSAGE_OUT_OF_RANGE');
+  const cancelled=new AbortController();cancelled.abort();
+  assert.throws(()=>source.decode(0,1,cancelled.signal),/cancelled/);
+  const owned=fixture(2);
+  const transferred=Wav.openPassageSource(owned,{takeOwnership:true});
+  if(typeof owned.transfer==='function') assert.equal(owned.byteLength,0);
+  assert.deepEqual(transferred.decode(801,810).channels,baseline.channels.map(ch=>ch.slice(801,810)));
+}
+console.log('Bounded WAV passage parity, reusable sources, late-window memory and hostile-header tests passed.');

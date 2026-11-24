@@ -4,7 +4,7 @@
 (function(root) {
   'use strict';
   var Zip = root.SunoStemZip, Wav = root.WavCodec, Engine = root.ShimmerEngine,
-    Resample = root.SunoStemResample;
+    Resample = root.SunoStemResample, Waveform = root.SunoStemWaveform;
   var MAX_MIX_BYTES = 96 * 1024 * 1024;
   // Milestone A previews a finite excerpt only. Admission is checked before
   // any ZIP entry is unpacked and again before sample-rate conversion:
@@ -12,6 +12,7 @@
   var MAX_PREVIEW_SECONDS = 240, DEFAULT_PREVIEW_END = 30;
   var MAX_WAV_ENTRY_BYTES = 256 * 1048576, MAX_MP3_ENTRY_BYTES = 64 * 1048576;
   var MAX_LIVE_BYTES = 512 * 1048576;
+  var WAVEFORM_SECONDS = 30, WAVEFORM_COLUMNS = 480;
   var clipEndTouched = false;
   var EXPORT_FORMATS = ['32'];
   function admit(label, bytes) {
@@ -23,6 +24,7 @@
   var context = null, buffer = null, source = null, startedAt = 0, position = 0, playing = false;
   var audioLabel = '', busy = false, timer = 0, objectUrl = null, pendingProcessAbort = null, pendingSourceAbort = null;
   var box, els = {};
+  var waveJob = null, waveViews = [], waveDuration = 0;
   var defaultOptions = ['natural','clear','warm','forward'];
   function $(id) { return els[id]; }
   function make() {
@@ -34,7 +36,7 @@
     box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'stemHeading');
     box.innerHTML = [
       '<div class="stem-panel">',
-      '<header class="stem-head"><div><h2 id="stemHeading">Suno stems <span class="stem-beta">beta</span></h2><p>Preview and export a passage of up to 240 seconds. Waveforms and whole-song mixing come next.</p></div>',
+      '<header class="stem-head"><div><h2 id="stemHeading">Suno stems <span class="stem-beta">beta</span></h2><p>Find an active passage, edit the stems, then preview and export your selection.</p></div>',
       '<div class="stem-head-buttons"><button id="stemNew" type="button">Choose another ZIP</button>',
       '<input id="stemNewFile" type="file" accept=".zip,application/zip" hidden>',
       '<button id="stemClose" type="button" aria-label="Close stem workspace">Close</button></div></header>',
@@ -45,13 +47,19 @@
       '<div class="stem-toolbar"><button type="button" id="stemAll">Enable all</button>',
       '<button type="button" id="stemNone">Disable all</button>',
       '<button type="button" id="stemStop">Cancel processing</button></div>',
+      '<div class="stem-timeline-toolbar" id="stemTimeline" hidden>',
+      '<div class="stem-timeline-actions"><button id="stemWaveBuild" type="button">Build waveforms</button>',
+      '<label for="stemWaveMode">Drag to set</label><select id="stemWaveMode">',
+      '<option value="preview">Preview passage</option><option value="attenuation">Attenuation range on this stem</option></select></div>',
+      '<p class="stem-note" id="stemWaveStatus" role="status">Build waveforms to see activity across the full timeline. Number fields remain available.</p>',
+      '<div class="stem-ruler" id="stemRuler" aria-label="Shared timeline in seconds"></div></div>',
       '<div id="stemList" class="stem-list" aria-label="Stems in archive"></div>',
       '<p class="stem-note">Stereo stems remain start-aligned from decoded sample zero. MP3 encoder delay cannot be inferred reliably; verify sync by listening. WAV variants are preferred when provided.</p>',
       '<label class="stem-allow"><input type="checkbox" id="stemAllowMismatch"> Allow zero-padding or trimming of mismatched stem lengths/rates (never time-shift stems)</label>',
       '<div class="stem-build"><label for="stemClipStart">Preview start (seconds)</label>',
-      '<input id="stemClipStart" type="number" min="0" step="0.1" value="0" class="stem-seconds">',
+      '<input id="stemClipStart" type="number" min="0" step="any" value="0" class="stem-seconds">',
       '<label for="stemClipEnd">Preview end (seconds; up to ' + MAX_PREVIEW_SECONDS + ' s after the start)</label>',
-      '<input id="stemClipEnd" type="number" min="0" step="0.1" value="' + DEFAULT_PREVIEW_END + '" class="stem-seconds">',
+      '<input id="stemClipEnd" type="number" min="0" step="any" value="' + DEFAULT_PREVIEW_END + '" class="stem-seconds">',
       '<button type="button" id="stemBuild">Build selected mix or passage</button>',
       '<span id="stemMixInfo" class="stem-note">No mix built.</span></div>',
       '<div class="stem-playback"><button type="button" id="stemPlay">Play preview</button>',
@@ -70,7 +78,8 @@
     ].join('');
     document.body.appendChild(box);
     ['stemHeading','stemNew','stemNewFile','stemClose','stemStatus','stemArchive','stemWarnings','stemMemory',
-      'stemAll','stemNone','stemStop','stemList','stemAllowMismatch','stemClipStart','stemClipEnd','stemBuild','stemMixInfo',
+      'stemAll','stemNone','stemStop','stemList','stemTimeline','stemWaveBuild','stemWaveMode','stemWaveStatus','stemRuler',
+      'stemAllowMismatch','stemClipStart','stemClipEnd','stemBuild','stemMixInfo',
       'stemPlay','stemSeek','stemTime','stemBits','stemExport'].forEach(function(k) {
       els[k] = document.getElementById(k);
     });
@@ -81,6 +90,7 @@
       if (file) open(file);
     });
     $('stemStop').addEventListener('click', function() { cancel(); status('Processing cancelled.'); });
+    $('stemWaveBuild').addEventListener('click', buildWaveforms);
     $('stemBuild').addEventListener('click', function() { build('mix'); });
     $('stemPlay').addEventListener('click', function() { playing ? pause() : play(); });
     $('stemSeek').addEventListener('input', function() {
@@ -134,6 +144,12 @@
   }
   function cancel() {
     generation++;
+    if (waveJob) {
+      waveJob.abort();
+      waveJob = null;
+      $('stemWaveStatus').textContent = 'Waveform scan cancelled. Completed rows are available.';
+      drawWaveforms();
+    }
     // Terminating a Worker alone does not settle the Promise awaiting it.
     // Reject the active processing job before releasing the Worker so the
     // suspended build can unwind and drop its decoded/mix references.
@@ -154,12 +170,14 @@
   function invalidate() {
     cancel(); clearPreview();
     if ($('stemMixInfo')) $('stemMixInfo').textContent = 'Selection/settings changed: build a new mix.';
+    drawWaveforms();
   }
   function close() {
     // Also invalidates a pending open() even before the workspace was built.
     if (!box) { generation++; return; }
     cancel(); clearPreview();
     current = null; box.hidden = true;
+    resetWaveforms();
     document.body.classList.remove('has-stem-workspace');
     if (context) { context.close().catch(function(){}); context = null; }
   }
@@ -207,6 +225,7 @@
     if (context) { context.close().catch(function(){}); context = null; }
     box.hidden = false; document.body.classList.add('has-stem-workspace');
     $('stemList').replaceChildren(); $('stemArchive').hidden = true; $('stemWarnings').hidden = true;
+    resetWaveforms();
     $('stemMixInfo').textContent = 'No mix built.';
     $('stemAllowMismatch').checked = false;
     $('stemClipStart').value = '0'; $('stemClipEnd').value = String(DEFAULT_PREVIEW_END); clipEndTouched = false;
@@ -219,6 +238,7 @@
       if (gen !== generation) return;
       archive.stems.forEach(function(s) { s.id = archive.stems.indexOf(s); });
       current = archive;
+      $('stemTimeline').hidden = !Waveform;
       $('stemArchive').textContent = file.name + ' · ' + archive.stems.length + ' distinct stems · ' +
         (archive.compressedBytes / 1048576).toFixed(1) + ' MiB compressed · ' +
         (archive.totalBytes / 1048576).toFixed(1) + ' MiB unpacked';
@@ -268,11 +288,198 @@
     });
     l.append(caption, input); return l;
   }
+  function resetWaveforms() {
+    waveViews = [];
+    waveDuration = 0;
+    $('stemTimeline').hidden = true;
+    $('stemRuler').hidden = true;
+    $('stemRuler').replaceChildren();
+    $('stemWaveBuild').hidden = false;
+    $('stemWaveBuild').textContent = 'Build waveforms';
+    $('stemWaveMode').value = 'preview';
+    $('stemWaveStatus').textContent = 'Build waveforms to see activity across the full timeline. Number fields remain available.';
+  }
+  function drawWaveform(view) {
+    var wave = view.stem.waveform, canvas = view.canvas;
+    var duration = wave ? wave.frames / wave.sampleRate : 0;
+    canvas.setAttribute('aria-disabled', String(!wave || !!waveJob));
+    view.wrap.setAttribute('aria-busy', String(!!waveJob && waveJob.stem === view.stem));
+    view.note.textContent = wave ? 'Source waveform · ' + fmtTime(duration) :
+      view.stem.waveError || (waveJob && waveJob.stem === view.stem ? 'Scanning source…' : 'Waveform not built');
+    var ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return;
+    var width = canvas.width, height = canvas.height, mid = height / 2;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#403751';
+    ctx.fillRect(0, mid, width, 1);
+    if (!wave || !waveDuration) return;
+    var end = width * duration / waveDuration;
+    function shade(from, to, color) {
+      var a = Math.max(0, Math.min(end, from / waveDuration * width));
+      var b = Math.max(0, Math.min(end, to / waveDuration * width));
+      if (b > a) { ctx.fillStyle = color; ctx.fillRect(a, 0, b - a, height); }
+    }
+    shade(Number($('stemClipStart').value), Number($('stemClipEnd').value), '#78c8f039');
+    if (view.stem.passageEnd > view.stem.passageStart)
+      shade(view.stem.passageStart, view.stem.passageEnd, view.stem.passageReduction ? '#ffb17544' : '#ffb17522');
+    if (view.drag)
+      shade(Math.min(view.drag.start, view.drag.end), Math.max(view.drag.start, view.drag.end), '#b89cf16b');
+    var scale = mid - 3, step = end / wave.columns;
+    for (var i = 0; i < wave.columns; i++) {
+      var lo = Math.max(-1, Math.min(1, wave.min[i]));
+      var hi = Math.max(-1, Math.min(1, wave.max[i]));
+      ctx.fillStyle = wave.max[i] > 1 || wave.min[i] < -1 ? '#ffb175' :
+        Math.max(Math.abs(lo), Math.abs(hi)) < .001 ? '#706680' : '#cdb3f8';
+      ctx.fillRect(i * step, mid - hi * scale, Math.max(1, step), Math.max(1, (hi - lo) * scale));
+    }
+    if (end < width) {
+      ctx.fillStyle = '#403751';
+      ctx.fillRect(end, 0, 1, height);
+    }
+  }
+  function drawWaveforms() {
+    waveDuration = waveViews.reduce(function(max, view) {
+      var wave = view.stem.waveform;
+      return wave ? Math.max(max, wave.frames / wave.sampleRate) : max;
+    }, 0);
+    var ruler = $('stemRuler');
+    ruler.hidden = !waveDuration;
+    ruler.replaceChildren();
+    if (waveDuration) {
+      for (var i = 0; i <= 4; i++) {
+        var seconds = waveDuration * i / 4;
+        ruler.append(node('span', '', waveDuration < 10 ? seconds.toFixed(1) + ' s' : fmtTime(seconds)));
+      }
+    }
+    waveViews.forEach(drawWaveform);
+  }
+  function addWaveform(card, stem, passage, fields) {
+    var wrap = node('div', 'stem-waveform'), canvas = node('canvas', 'stem-waveform-canvas');
+    var note = node('span', 'stem-waveform-note');
+    canvas.width = WAVEFORM_COLUMNS; canvas.height = 64;
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', 'Source waveform for ' + stem.name + '. Use the number fields to set an exact range.');
+    wrap.append(canvas, note); card.append(wrap);
+    var view = {stem: stem, canvas: canvas, wrap: wrap, note: note, drag: null};
+    waveViews.push(view);
+    var inputs = Array.from(fields.children, function(label) { return label.children[1]; });
+    inputs[0].step = inputs[1].step = 'any';
+    inputs.forEach(function(input, i) {
+      input.setAttribute('aria-label', ['Attenuation start for ', 'Attenuation end for ', 'Attenuation reduction for '][i] + stem.name);
+    });
+    function pointerTime(e) {
+      var rect = canvas.getBoundingClientRect();
+      var wave = stem.waveform;
+      var fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      return Math.min(wave.frames, Math.round(fraction * waveDuration * wave.sampleRate)) / wave.sampleRate;
+    }
+    canvas.addEventListener('pointerdown', function(e) {
+      if (busy || !stem.waveform || !e.isPrimary || e.button !== 0) return;
+      var at = pointerTime(e);
+      view.drag = {id: e.pointerId, mode: $('stemWaveMode').value, start: at, end: at};
+      canvas.setPointerCapture(e.pointerId);
+      drawWaveform(view);
+    });
+    canvas.addEventListener('pointermove', function(e) {
+      if (!view.drag || view.drag.id !== e.pointerId) return;
+      view.drag.end = pointerTime(e);
+      drawWaveform(view);
+    });
+    canvas.addEventListener('pointerup', function(e) {
+      if (!view.drag || view.drag.id !== e.pointerId) return;
+      var a = view.drag.start, b = pointerTime(e), mode = view.drag.mode;
+      view.drag = null;
+      var from = Math.min(a, b), to = Math.max(a, b);
+      if (busy || to <= from) { drawWaveform(view); return; }
+      if (mode === 'attenuation') {
+        stem.passageStart = from; stem.passageEnd = to;
+        inputs[0].value = String(from); inputs[1].value = String(to);
+        passage.open = true;
+      } else {
+        $('stemClipStart').value = String(from); $('stemClipEnd').value = String(to);
+        clipEndTouched = true;
+      }
+      invalidate();
+    });
+    function clearDrag() { view.drag = null; drawWaveform(view); }
+    canvas.addEventListener('pointercancel', clearDrag);
+    canvas.addEventListener('lostpointercapture', clearDrag);
+  }
+  async function scanStemWaveform(stem, controller, gen) {
+    var limit = stem.wav ? MAX_WAV_ENTRY_BYTES : MAX_MP3_ENTRY_BYTES;
+    if (!stem.entry || !Number.isSafeInteger(stem.entry.size) || stem.entry.size < 0 || stem.entry.size > limit)
+      throw new Error('Source exceeds the ' + limit / 1048576 + ' MiB entry limit.');
+    var decoder = stem.wav ? Wav.openPassageSource : root.SunoStemMp3 && root.SunoStemMp3.openSource;
+    if (!decoder) throw new Error('Waveform decoder is unavailable for this format.');
+    var bytes = await awaitSource(current.extract(stem.entry, controller.signal), gen, controller);
+    ensureFresh(gen);
+    var ownership = {takeOwnership: true};
+    var media = await awaitSource(stem.wav ? decoder(bytes, ownership) :
+      decoder(bytes, controller.signal, ownership), gen, controller);
+    bytes = null;
+    ensureFresh(gen);
+    var wave = Waveform.create(media.frameCount, media.sampleRate, WAVEFORM_COLUMNS, media.channelCount);
+    // Cap frames as well as time for high-rate WAVs. The reader can only
+    // yield to cancellation between these synchronous PCM windows.
+    var step = Math.min(media.sampleRate, 48000) * WAVEFORM_SECONDS;
+    for (var start = 0; start < media.frameCount; start += step) {
+      var end = Math.min(start + step, media.frameCount);
+      var decoded = await awaitSource(media.decode(start, end, controller.signal), gen, controller);
+      ensureFresh(gen);
+      Waveform.append(wave, decoded.channels, start);
+      decoded = null;
+      $('stemWaveStatus').textContent = 'Scanning ' + stem.name + ' · ' + fmtTime(end / media.sampleRate) +
+        ' of ' + fmtTime(media.frameCount / media.sampleRate);
+      await new Promise(function(resolve) { setTimeout(resolve, 0); });
+      ensureFresh(gen);
+    }
+    if (wave.written !== media.frameCount) throw new Error('Waveform scan ended before the source did.');
+    return wave;
+  }
+  async function buildWaveforms() {
+    if (!current || busy || !Waveform) return;
+    var todo = current.stems.filter(function(stem) { return !stem.waveform; });
+    if (!todo.length) return;
+    var gen = generation, controller = new AbortController(), failed = 0;
+    waveJob = controller; busy = true;
+    renderActions();
+    try {
+      for (var i = 0; i < todo.length; i++) {
+        var stem = todo[i];
+        ensureFresh(gen);
+        waveJob.stem = stem; stem.waveError = '';
+        $('stemWaveStatus').textContent = 'Scanning stem ' + (i + 1) + ' of ' + todo.length + ' · ' + stem.name;
+        drawWaveforms();
+        try {
+          var wave = await scanStemWaveform(stem, controller, gen);
+          ensureFresh(gen);
+          stem.waveform = wave;
+        } catch (err) {
+          ensureFresh(gen);
+          stem.waveError = err.message || String(err);
+          failed++;
+        }
+      }
+      $('stemWaveStatus').textContent = failed ?
+        failed + ' waveform(s) unavailable. See the messages on those rows.' :
+        'Waveforms ready. Drag across a row to select a range.';
+      $('stemWaveBuild').hidden = !failed;
+    } catch (err) {
+      if (gen === generation) $('stemWaveStatus').textContent = err.message || String(err);
+    } finally {
+      if (gen === generation) {
+        waveJob = null; busy = false;
+        drawWaveforms(); renderActions();
+      }
+    }
+  }
   function render() {
     if (!current) return;
     var list = $('stemList'); list.replaceChildren();
+    waveViews = [];
     current.stems.forEach(function(s) {
       var card = node('article', 'stem-card');
+      var cardControls = node('div', 'stem-card-controls');
       var top = node('div', 'stem-top'), title = node('strong', '', s.name);
       var meta = node('small', '', s.format + (s.wav && s.mp3 ? ' (WAV preferred; MP3 also available)' : '') +
         ' · ' + (s.entry.size / 1048576).toFixed(1) + ' MiB');
@@ -280,7 +487,7 @@
       var preview = node('button', '', 'Preview stem');
       preview.type = 'button';
       preview.addEventListener('click', function() { build('stem', s); });
-      top.append(nameBox, preview); card.append(top);
+      top.append(nameBox, preview); cardControls.append(top);
       var controls = node('div', 'stem-controls');
       controls.append(
         checkbox('Enable', s.enabled, function(v){ s.enabled = v; invalidate(); }),
@@ -289,11 +496,15 @@
         checkbox('Clean', s.clean, function(v){ s.clean = v; invalidate(); }),
         checkbox('Polish', s.polish, function(v){ s.polish = v; invalidate(); })
       );
+      ['Enable','Mute','Solo','Clean','Polish'].forEach(function(label, i) {
+        controls.children[i].children[0].setAttribute('aria-label', label + ' ' + s.name);
+      });
       var volume = node('label', 'stem-volume');
       var volLabel = node('span', '', 'Mix level ' + s.volume + ' dB');
       var vol = document.createElement('input'); vol.type = 'range'; vol.min = -24; vol.max = 12; vol.step = 0.5; vol.value = s.volume;
+      vol.setAttribute('aria-label', 'Mix level for ' + s.name);
       vol.addEventListener('input', function() { s.volume = Number(vol.value); volLabel.textContent = 'Mix level ' + s.volume + ' dB'; invalidate(); });
-      volume.append(volLabel, vol); controls.append(volume); card.append(controls);
+      volume.append(volLabel, vol); controls.append(volume); cardControls.append(controls);
       var details = document.createElement('details'), summary = node('summary', '', 'Stem-specific Sound Polish settings');
       details.append(summary);
       var params = node('div', 'stem-params');
@@ -312,7 +523,7 @@
       target.addEventListener('change', function() { s.target=target.value; invalidate(); });
       targetLabel.appendChild(target); params.append(targetLabel);
       var hint = node('p', 'stem-note', 'Enable Polish above to apply these parameters to this stem. Cleaning runs first when enabled.');
-      details.append(params, hint); card.append(details);
+      details.append(params, hint); cardControls.append(details);
       var passage = document.createElement('details');
       passage.append(node('summary', '', 'Passage attenuation (reversible)'));
       var passageFields = node('div', 'stem-params');
@@ -323,8 +534,11 @@
       );
       passage.append(passageFields,
         node('p', 'stem-note', 'Attenuates this stem only, with 20 ms edge fades. A muted passage may also remove wanted music.'));
-      card.append(passage); list.append(card);
+      cardControls.append(passage); card.append(cardControls);
+      if (Waveform) addWaveform(card, s, passage, passageFields);
+      list.append(card);
     });
+    drawWaveforms();
     renderActions();
   }
   function renderActions() {
@@ -335,6 +549,8 @@
     $('stemStop').disabled = !busy;
     $('stemAll').disabled = !current || busy;
     $('stemNone').disabled = !current || busy;
+    $('stemWaveBuild').disabled = !current || busy;
+    $('stemWaveMode').disabled = busy || !waveDuration;
   }
   function selectedStems() {
     if (!current) return [];

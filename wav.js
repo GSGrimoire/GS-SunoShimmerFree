@@ -63,7 +63,7 @@
   // Studio-only bounded passage reader. Validate the entire source layout before
   // allocating even a temporary excerpt; the legacy full-file reader remains
   // unchanged for production single-track callers.
-  function decodeWavPassage(buf, startSeconds, endSeconds, maxBytes) {
+  function inspectWavPassageSource(buf) {
     var dv=new DataView(buf), len=buf.byteLength;
     function tag(o){return String.fromCharCode(dv.getUint8(o),dv.getUint8(o+1),dv.getUint8(o+2),dv.getUint8(o+3));}
     if(len<12||tag(0)!=='RIFF'||tag(8)!=='WAVE') throw new Error('Invalid WAV RIFF header.');
@@ -88,7 +88,8 @@
         if(fmt.code===65534){
           if(n<40||dv.getUint16(body+16,true)!==22)
             throw new Error('Invalid extensible WAV format.');
-          // This reader accepts only the canonical 22-byte extension.\n          // KSDATAFORMAT_SUBTYPE_PCM/IEEE_FLOAT are the complete standard GUIDs.
+          // This reader accepts only the canonical 22-byte extension.
+          // KSDATAFORMAT_SUBTYPE_PCM/IEEE_FLOAT are the complete standard GUIDs.
           var subtype=dv.getUint32(body+24,true);
           var guid=[0,0,16,0,128,0,0,170,0,56,155,113];
           for(var gi=0;gi<12;gi++)
@@ -118,13 +119,22 @@
     var stride=fmt.ch*fmt.bits/8;
     if(!valid||fmt.align!==stride||fmt.sr*stride!==fmt.rate||size%stride)
       throw new Error('Unsupported or unaligned WAV sample format.');
-    var sourceFrames=size/stride;
-    if(!Number.isSafeInteger(sourceFrames)||!Number.isFinite(startSeconds)||
+    return {fmt:fmt,off:off,stride:stride,sourceFrames:size/stride};
+  }
+
+  function decodeWavPassage(buf, startSeconds, endSeconds, maxBytes) {
+    var source=inspectWavPassageSource(buf);
+    if(!Number.isFinite(startSeconds)||
        !Number.isFinite(endSeconds)||startSeconds<0||
        (endSeconds!==0&&endSeconds<=startSeconds))
       throw new Error('Invalid WAV passage boundaries.');
-    var start=Math.round(startSeconds*fmt.sr);
-    var end=endSeconds===0?sourceFrames:Math.round(endSeconds*fmt.sr);
+    var start=Math.round(startSeconds*source.fmt.sr);
+    var end=endSeconds===0?source.sourceFrames:Math.round(endSeconds*source.fmt.sr);
+    return decodeWavFrames(buf,source,start,end,maxBytes);
+  }
+
+  function decodeWavFrames(buf,source,start,end,maxBytes) {
+    var fmt=source.fmt,off=source.off,stride=source.stride,sourceFrames=source.sourceFrames;
     var count=end-start, decoded=count*fmt.ch*4, raw=count*stride;
     if(Number.isSafeInteger(start)&&Number.isSafeInteger(end)&&
        (start>=sourceFrames||end>sourceFrames)){
@@ -138,7 +148,7 @@
       var short=new Error('WAV passage is shorter than one sample frame.');
       short.code='PASSAGE_TOO_SHORT';throw short;
     }
-    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||count<1||
+    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||count<1||
        !Number.isSafeInteger(decoded)||decoded>maxBytes||
        !Number.isSafeInteger(raw)||raw+44>maxBytes)
       throw new Error('WAV passage exceeds source or memory budget.');
@@ -154,6 +164,27 @@
     var result=decodeWav(cropped);
     result.passageStartFrame=start;result.sourceFrames=sourceFrames;
     return result;
+  }
+
+  // Keep one validated WAV entry available across bounded sample-frame reads.
+  // The caller may explicitly yield its private ZIP entry buffer to avoid an
+  // additional full-size allocation. Copy a borrowed buffer before parsing.
+  function openPassageSource(buf, options) {
+    var input=new Uint8Array(new DataView(buf).buffer);
+    if(input.byteLength>256*1048576) throw new Error('WAV source exceeds the 256 MiB scan budget.');
+    var owned;
+    if(options&&options.takeOwnership&&buf instanceof ArrayBuffer&&typeof buf.transfer==='function')
+      owned=buf.transfer();
+    else if(options&&options.takeOwnership&&buf instanceof ArrayBuffer&&typeof root.structuredClone==='function')
+      owned=root.structuredClone(buf,{transfer:[buf]});
+    else owned=input.slice().buffer;
+    var source=inspectWavPassageSource(owned);
+    if(!source.sourceFrames) throw new Error('WAV source contains no sample frames.');
+    return Object.freeze({sampleRate:source.fmt.sr,frameCount:source.sourceFrames,
+      channelCount:source.fmt.ch,decode:function(start,end,signal) {
+        if(signal&&signal.aborted) throw new Error('WAV decoding cancelled.');
+        return decodeWavFrames(owned,source,start,end,96*1048576);
+      }});
   }
 
   // bits: 16, 24 or 32 (32 = IEEE float)
@@ -186,7 +217,8 @@
     return buf;
   }
 
-  var api = { decodeWav: decodeWav, decodeWavPassage: decodeWavPassage, encodeWav: encodeWav };
+  var api = { decodeWav: decodeWav, decodeWavPassage: decodeWavPassage,
+    openPassageSource:openPassageSource, encodeWav: encodeWav };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.WavCodec = api;
 })(typeof self !== 'undefined' ? self : this);

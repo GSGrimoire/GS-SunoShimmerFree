@@ -1,7 +1,14 @@
 /* Standalone stem workspace skin. Existing single-track page remains unchanged. */
 .stem-workspace[hidden] { display: none !important; }
 .stem-workspace { position: fixed; inset: 0; z-index: 1500; overflow: auto; background: rgba(10,10,14,.94); color: #f5f3f8; padding: 16px; }
-.stem-panel { max-width: 1160px; margin: 0 auto; background: #1a1922; border: 1px solid #554b67; border-radius: 18px; padding: clamp(14px,3vw,28px); box-shadow: 0 15px 50px #0008; }
+.stem-panel {
+  --stem-track-controls: minmax(16rem, 1fr);
+  --stem-track-waveform: minmax(0, 2fr);
+  --stem-track-gap: 16px;
+  --stem-track-padding: 12px;
+  max-width: 1160px; margin: 0 auto; background: #1a1922; border: 1px solid #554b67;
+  border-radius: 18px; padding: clamp(14px,3vw,28px); box-shadow: 0 15px 50px #0008;
+}
 .stem-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; border-bottom: 1px solid #484050; padding-bottom: 12px; }
 .stem-head h2 { margin: 0 0 5px; font-size: 1.7rem; }
 .stem-head p { margin: 0; color: #c3bcd0; }
@@ -18,22 +25,88 @@
 .stem-toolbar, .stem-build, .stem-playback { display:flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 15px 0; }
 .stem-build { border-top: 1px solid #484050; padding-top: 14px; }
 .stem-list { display: grid; gap: 12px; }
-.stem-card { background: #25222e; border: 1px solid #554b67; border-radius: 11px; padding: 14px; }
-.stem-top { display: flex; justify-content: space-between; align-items: start; gap: 14px; margin-bottom: 14px; }
+.stem-card, .stem-timeline-toolbar {
+  display: grid;
+  grid-template-columns: var(--stem-track-controls) var(--stem-track-waveform);
+  column-gap: var(--stem-track-gap);
+  padding: var(--stem-track-padding);
+  border: 1px solid #554b67;
+  border-radius: 11px;
+}
+.stem-card { align-items: start; background: #25222e; }
+.stem-card-controls, .stem-waveform { min-width: 0; }
+.stem-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
 .stem-title { display:flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .stem-title strong { font-size: 1rem; color: #fff; }
 .stem-title small { font-size: .75rem; color: #bab0c9; margin-top: 3px; }
-.stem-controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; }
+.stem-controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .stem-check { white-space: nowrap; font-size: .87rem; }
 .stem-workspace input[type="checkbox"] { accent-color: #b882f8; }
-.stem-volume { display: flex; align-items: center; gap: 8px; font-size: .84rem; min-width: 220px; flex: 1; }
-.stem-volume input { flex: 1; min-width: 100px; accent-color: #b882f8; }
+.stem-volume { display: flex; align-items: center; gap: 8px; font-size: .84rem; min-width: 0; flex: 1 1 100%; }
+.stem-volume input { flex: 1; min-width: 0; accent-color: #b882f8; }
 .stem-card details { margin-top: 13px; border-top: 1px solid #50445d; padding-top: 10px; }
 .stem-card summary { cursor: pointer; color: #dac4f5; }
-.stem-params { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); margin-top: 13px; }
-.stem-field { display:flex; flex-direction: column; gap: 8px; font-size: .88rem; }
+.stem-params { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit,minmax(min(100%, 8.75rem),1fr)); margin-top: 10px; }
+.stem-field { display:flex; min-width: 0; flex-direction: column; gap: 6px; font-size: .88rem; }
 .stem-field input[type="range"] { width: 100%; accent-color: #b882f8; }
-.stem-field select, .stem-build select { border-radius: 6px; padding: 7px; color: #fff; background: #272236; border: 1px solid #76658f; }
+.stem-field select, .stem-build select, .stem-timeline-toolbar select { border-radius: 6px; padding: 7px; color: #fff; background: #272236; border: 1px solid #76658f; }
+.stem-timeline-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  align-items: center;
+  row-gap: 8px;
+  margin: 0 0 8px;
+  background: #1e1b28;
+}
+.stem-timeline-toolbar > :not(.stem-ruler) { grid-column: 1 / -1; justify-self: start; }
+.stem-timeline-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.stem-timeline-actions label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.stem-timeline-toolbar [role="status"] { margin: 0; }
+.stem-timeline-toolbar:has(.stem-ruler:not([hidden])) { box-shadow: 0 4px 10px #100d1a66; }
+.stem-timeline-toolbar[hidden], .stem-ruler[hidden] { display: none; }
+.stem-ruler {
+  grid-column: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 4px;
+  color: #ded5ed;
+  font-size: .75rem;
+  font-variant-numeric: tabular-nums;
+}
+.stem-ruler span {
+  white-space: nowrap;
+  border-top: 1px solid #79698c;
+  padding-top: 4px;
+}
+.stem-waveform { align-self: start; }
+.stem-waveform-canvas {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  min-height: 56px;
+  max-height: 100px;
+  background: #181624;
+  border: 1px solid #655577;
+  border-radius: 7px;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+.stem-waveform-canvas:focus-visible { outline: 2px solid #cfa9ff; outline-offset: 2px; }
+.stem-waveform-canvas[aria-disabled="true"] { cursor: default; border-style: dashed; }
+.stem-waveform-note {
+  display: block;
+  margin-top: 4px;
+  color: #d0c6de;
+  font-size: .75rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.stem-waveform-note:empty, .stem-waveform-note[hidden], .stem-waveform[hidden] { display: none; }
+.stem-waveform[aria-busy="true"] .stem-waveform-canvas { cursor: progress; }
 .stem-workspace input[type="number"] {
   width: 7rem; max-width: 100%; box-sizing: border-box;
   border-radius: 6px; padding: 7px; color: #fff;
@@ -43,6 +116,11 @@
 #stemTime { font-variant-numeric: tabular-nums; }
 body.has-stem-workspace { overflow: hidden; }
 .stem-nav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 720px) {
+  .stem-card, .stem-timeline-toolbar { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+  .stem-ruler { grid-column: 1; }
+  .stem-timeline-toolbar { position: static; }
+}
 @media (max-width: 620px) {
   .stem-workspace { padding: 0; }
   .stem-panel { border-radius: 0; min-height: 100%; }

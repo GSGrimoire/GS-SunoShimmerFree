@@ -6,7 +6,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const wav=require('../wav.js'),Polish=require('../polish.js'),Engine=require('../engine.js'),
-  Resample=require('../stem-resample.js');
+  Resample=require('../stem-resample.js'), Waveform=require('../stem-waveform.js');
 const source=fs.readFileSync(path.join(__dirname,'../stem-ui.js'),'utf8');
 function samples(level,sr,seconds) {
   return Float32Array.from({length:Math.round(sr*seconds)},()=>level);
@@ -35,13 +35,15 @@ function harness(stems, options={}) {
     get innerHTML(){return this._innerHTML||'';}
     setAttribute(name,value){this[name]=value;}
     addEventListener(type,fn){(this.listeners[type] ||= []).push(fn);}
-    fire(type){for(const f of this.listeners[type]||[])f.call(this,{target:this,preventDefault(){}});}
+    fire(type,props={}){for(const f of this.listeners[type]||[])f.call(this,{target:this,preventDefault(){},...props});}
     append(...items){this.children.push(...items);}
     appendChild(el){this.children.push(el);if(this.tag==='body' && el.id)nodes.set(el.id,el);return el;}
     replaceChildren(...items){this.children=items;}
     remove(){}
     click(){if(this.tag==='a')downloaded.push(this.download);else this.fire('click');}
     focus(){}
+    getBoundingClientRect(){return {left:20,width:480};}
+    setPointerCapture(){}
   }
   const document={body:new E('body'),createElement(tag){return new E(tag);},
     createTextNode(str){const e=new E('text');e.textContent=str;return e;},
@@ -99,12 +101,13 @@ function harness(stems, options={}) {
       if(options.holdFirstExtract && !heldOnce) {
         heldOnce=true;
         heldSignal=signal;
-        return new Promise(resolve=>{releaseHeldExtract=()=>resolve(s._file);});
+        return new Promise(resolve=>{releaseHeldExtract=()=>resolve(s._file.slice(0));});
       }
-      return s._file;
+      return s._file.slice(0);
     }};
   const root={SunoStemZip:{open:async()=>archive},WavCodec:wav,ShimmerEngine:Engine,
     SunoStemResample:Resample,AudioContext:AC,
+    SunoStemWaveform:options.waveform?Waveform:undefined,
     confirm:()=>true};
   if(options.webCodecs) {
     root.AudioDecoder=class {};
@@ -118,13 +121,54 @@ function harness(stems, options={}) {
   }
   const URLs={createObjectURL:()=> 'blob:synthetic',revokeObjectURL(){}};
   const ctx={window:root,document,Worker,Blob,URL:URLs,console,Float32Array,Uint8Array,
-    ArrayBuffer,TextDecoder,AbortController,setInterval:()=>1,clearInterval(){},setTimeout:()=>0};
+    ArrayBuffer,TextDecoder,AbortController,setInterval:()=>1,clearInterval(){},setTimeout:options.waveform?setTimeout:()=>0};
   vm.runInNewContext(source,ctx,{timeout:5000,filename:'stem-ui.js'});
   const el=id=>{const e=nodes.get(id);assert(e,'Missing '+id);return e;};
   return {ui:root.SunoStemUI,el,nodes,stems,downloaded,audios,workers,
     extractCalls(){return extractCalls;},
     releaseHeldExtract(){assert(releaseHeldExtract,'held extraction missing');releaseHeldExtract();},
     heldExtractionAborted(){return heldSignal && heldSignal.aborted;}};
+}
+async function waveformTimelineRegression() {
+  const a=fakeStem('Lead',.25,48000,2), b=fakeStem('Backing',.125,48000,2);
+  const h=harness([a,b],{waveform:true});
+  await h.ui.open({name:'Waveform controls.zip'});
+  assert.equal(h.extractCalls(),0,'opening the workspace does not start decoding');
+  h.el('stemWaveBuild').fire('click');
+  for(let i=0;i<25&&h.el('stemBuild').disabled;i++) await new Promise(r=>setTimeout(r,10));
+  assert.match(h.el('stemWaveStatus').textContent,/Waveforms ready/);
+  assert.equal(h.extractCalls(),2,'each stem entry is read exactly once');
+  assert.equal(h.audios.length,0,'waveform scan must not create a playback buffer');
+  assert.equal(a.waveform.written,96000);
+  assert.equal(a.waveform.max[0],.25);
+  const c=h.el('stemList').children[0].children[1].children[0];
+  const event=x=>({clientX:x,pointerId:1,isPrimary:true,button:0});
+  c.fire('pointerdown',event(140)); c.fire('pointerup',event(380));
+  assert.equal(h.el('stemClipStart').value,'0.5');
+  assert.equal(h.el('stemClipEnd').value,'1.5');
+  h.el('stemBuild').fire('click'); await flush();
+  const dragged=h.audios.at(-1).getChannelData(0).slice();
+  h.el('stemClipEnd').fire('change');
+  h.el('stemBuild').fire('click'); await flush();
+  assert.deepEqual(h.audios.at(-1).getChannelData(0),dragged,'drag and typed range deliver the same PCM');
+  h.el('stemWaveMode').value='attenuation';
+  c.fire('pointerdown',event(200)); c.fire('pointerup',event(260));
+  assert.equal(a.passageStart,.75); assert.equal(a.passageEnd,1);
+  assert.equal(b.passageStart,undefined,'range edits belong to the dragged stem');
+  assert.equal(a.passageReduction,undefined,'choosing a range does not apply gain on its own');
+  assert.equal(h.el('stemExport').disabled,true,'range edit invalidates the old export');
+  h.ui.close();
+
+  const stale=fakeStem('Cancelled',.5,48000,1);
+  const stopped=harness([stale],{waveform:true,holdFirstExtract:true});
+  await stopped.ui.open({name:'Cancel waveform.zip'});
+  stopped.el('stemWaveBuild').fire('click'); await flush();
+  stopped.el('stemStop').fire('click');
+  assert.equal(stopped.heldExtractionAborted(),true);
+  stopped.releaseHeldExtract(); await flush();
+  assert.equal(stale.waveform,undefined,'cancelled work cannot publish a late waveform');
+  assert.equal(stopped.el('stemBuild').disabled,false);
+  stopped.ui.close();
 }
 // A 44.1 kHz excerpt must retain its absolute origin after explicit
 // conversion to a 48 kHz mix. It must not be clipped a second time.
@@ -234,6 +278,7 @@ async function flush(){
   await mixedFormatFailClosedRegression();
   await mp3PreExtractionAdmissionRegression();
   await finiteExcerptAdmissionRegression();
+  await waveformTimelineRegression();
   const h=harness([fakeStem('Lead Vocals',.2),fakeStem('Drums',.3)]);
   await h.ui.open({name:'Synthetic Stems.zip',size:1234});
   assert.match(h.el('stemWorkspace')._innerHTML,/milestone A: 32-bit float WAV passage/,

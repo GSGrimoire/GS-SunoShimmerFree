@@ -82,6 +82,38 @@ function floatWav(ab){const v=new DataView(ab);let o=12,fmt=null;
     row('Stem ZIP opens with ten stems',true,D.getElementById('stemArchive').textContent);
     const defEnd=D.getElementById('stemClipEnd').value;
     row('Preview fields start at 0–30 s',D.getElementById('stemClipStart').value==='0'&&defEnd==='30','start '+D.getElementById('stemClipStart').value+', end '+defEnd);
+    if (new URLSearchParams(location.search).has('waveforms')) {
+      const start=performance.now(), wave=D.getElementById('stemWaveBuild');
+      wave.click();
+      await until(()=>/Scanning/.test(D.getElementById('stemWaveStatus').textContent),5000,'waveform scan start');
+      D.getElementById('stemStop').click();
+      row('Cancel waveform scan',/cancelled/i.test(D.getElementById('stemWaveStatus').textContent)&&!wave.disabled,
+        D.getElementById('stemWaveStatus').textContent);
+      wave.click();
+      await until(()=>!wave.disabled,360000,'waveform overview');
+      const canvases=[...D.querySelectorAll('.stem-waveform-canvas')];
+      const ready=canvases.length===10&&canvases.every(c=>c.getAttribute('aria-disabled')==='false');
+      const ruler=D.getElementById('stemRuler').textContent;
+      row('Ten source waveforms share an eight-minute ruler',ready&&ruler.includes('8:00'),
+        canvases.length+' rows in '+Math.round(performance.now()-start)+' ms, ruler '+ruler);
+      const track=canvases[7], rect=track.getBoundingClientRect();
+      const send=(type,seconds)=>track.dispatchEvent(new W.PointerEvent(type,{pointerId:41,button:0,
+        isPrimary:true,clientX:rect.left+rect.width*seconds/480}));
+      // Synthetic events have no active pointer to capture. Coordinates and
+      // the normal mouse-to-fields event handlers still run in the real page.
+      const capture=track.setPointerCapture;
+      track.setPointerCapture=()=>{};
+      try {
+        send('pointerdown',462); send('pointerup',474);
+        const a=D.getElementById('stemClipStart').value,b=D.getElementById('stemClipEnd').value;
+        row('Waveform drag sets the exact preview range',Number(a)===462&&Number(b)===474,a+'–'+b+' seconds');
+        D.getElementById('stemWaveMode').value='attenuation';
+        send('pointerdown',465); send('pointerup',470);
+        const fields=track.closest('.stem-card').querySelectorAll('.stem-params input[type=number]');
+        row('Waveform drag sets only this stem’s edit range',fields[0].value==='465'&&fields[1].value==='470'&&
+          Number(fields[2].value)===0,fields[0].value+'–'+fields[1].value+' seconds, reduction '+fields[2].value+'%');
+      } finally { track.setPointerCapture=capture; }
+    }
     D.getElementById('stemClipStart').value='462';D.getElementById('stemClipEnd').value='474';
     D.getElementById('stemClipEnd').dispatchEvent(new Event('change'));
     const heap0=performance.memory?performance.memory.usedJSHeapSize:0;
