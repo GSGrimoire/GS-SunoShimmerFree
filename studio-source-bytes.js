@@ -54,17 +54,26 @@
   }
   async function verifyManifestSources(sources, selected, { signal, maxTotalBytes = DEFAULT_LIMIT } = {}) {
     cancelled(signal);
-    if (!Array.isArray(sources) || sources.length < 1 || sources.length > MAX_MANIFEST_SOURCES)
-      throw new RangeError('Invalid manifest source count');
+    if (!Array.isArray(sources)) throw new RangeError('Invalid manifest source count');
     if (!Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 1 || maxTotalBytes > DEFAULT_LIMIT)
       throw new RangeError('Invalid manifest byte limit');
+    const mapSize = Object.getOwnPropertyDescriptor(Map.prototype, 'size').get;
     let count;
-    try { count = Object.getOwnPropertyDescriptor(Map.prototype, 'size').get.call(selected); }
+    try { count = mapSize.call(selected); }
     catch { throw new TypeError('Expected native source selection Map'); }
-    if (count !== sources.length) throw new Error('Source selection count mismatch');
+    if (count < 1 || count > MAX_MANIFEST_SOURCES)
+      throw new RangeError('Invalid manifest source count or selection count');
+    // Capture native selection entries before touching untrusted array/record
+    // descriptors: a Proxy trap can synchronously mutate the caller's Map.
+    const selection = new Map();
+    Map.prototype.forEach.call(selected, (blob, id) => selection.set(id, blob));
+    const sourceCount = ownData(sources, 'length');
+    if (!Number.isSafeInteger(sourceCount) || sourceCount < 1 || sourceCount > MAX_MANIFEST_SOURCES)
+      throw new RangeError('Invalid manifest source count');
+    if (count !== sourceCount) throw new Error('Source selection count mismatch');
     const ids = new Set(), pending = [];
     let total = 0;
-    for (let i = 0; i < sources.length; i++) {
+    for (let i = 0; i < sourceCount; i++) {
       const record = ownData(sources, String(i));
       if (!record || typeof record !== 'object' || Array.isArray(record))
         throw new TypeError('Invalid manifest source record');
@@ -74,13 +83,24 @@
       if (typeof digest !== 'string' || !/^[0-9a-f]{64}$/i.test(digest))
         throw new TypeError('Expected manifest SHA-256 digest');
       ids.add(id);
-      if (!Map.prototype.has.call(selected, id)) throw new Error('Missing selected source');
-      const blob = Map.prototype.get.call(selected, id);
+      if (!selection.has(id)) throw new Error('Missing selected source');
+      const blob = selection.get(id);
       const size = nativeSize(blob);
       if (size < 1 || size > maxTotalBytes - total)
         throw new RangeError('Manifest sources exceed aggregate byte limit');
       total += size;
       pending.push({ id, digest, blob, size });
+    }
+    // Reject synchronous changes to the admitted count or native selection
+    // before any hashing begins. Read the potentially trapped length first.
+    if (ownData(sources, 'length') !== sourceCount || pending.length !== count || ids.size !== count)
+      throw new Error('Manifest source count changed during admission');
+    if (mapSize.call(selected) !== count)
+      throw new Error('Source selection changed during admission');
+    for (const entry of pending) {
+      if (!Map.prototype.has.call(selected, entry.id) ||
+          Map.prototype.get.call(selected, entry.id) !== entry.blob)
+        throw new Error('Source selection changed during admission');
     }
     const verified = [];
     for (const entry of pending) {

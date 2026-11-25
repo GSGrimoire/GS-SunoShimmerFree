@@ -142,3 +142,54 @@ test('manifest re-link rejects fake Maps and Blob lookalikes, ignores overridden
   const real=selection();real.get=()=>new Blob(['BAD']);real.has=()=>false;
   assert.equal(await (await verifyManifestSources(records(),real))[1].blob.text(),'def');
 });
+
+test('manifest re-link rejects reentrant array truncation instead of partial success', async () => {
+  const target = records();
+  const sources = new Proxy(target, {
+    getOwnPropertyDescriptor(array, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(array, key);
+      if (key === '0') array.length = 1;
+      return descriptor;
+    }
+  });
+  await assert.rejects(verifyManifestSources(sources, selection()), /manifest/i);
+  assert.equal(target.length, 1, 'the adversarial trap actually ran');
+});
+test('manifest re-link rejects synchronous source-list expansion during admission', async () => {
+  const target = records();
+  const sources = new Proxy(target, {
+    getOwnPropertyDescriptor(array, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(array, key);
+      if (key === '1') array.push({id:'c', digest:shaAbc});
+      return descriptor;
+    }
+  });
+  await assert.rejects(verifyManifestSources(sources, selection()), /count changed/);
+  assert.equal(target.length, 3);
+});
+test('manifest re-link rejects reentrant same-count native selection substitution', async () => {
+  const chosen = selection(), original = chosen.get('a');
+  const manifest = records();
+  manifest[1] = new Proxy(manifest[1], {
+    getOwnPropertyDescriptor(record, key) {
+      if (key === 'digest') chosen.set('a', new Blob(['abc']));
+      return Reflect.getOwnPropertyDescriptor(record, key);
+    }
+  });
+  await assert.rejects(verifyManifestSources(manifest, chosen), /selection changed/);
+  assert.equal(chosen.size, 2);
+  assert.notEqual(chosen.get('a'), original);
+});
+test('manifest re-link rejects reentrant selection count or membership changes', async () => {
+  for (const mutate of [map => map.delete('a'), map => {map.delete('a');map.set('c',new Blob(['abc']));}]) {
+    const chosen = selection();
+    const manifest = new Proxy(records(), {
+      getOwnPropertyDescriptor(array, key) {
+        if (key === '0') mutate(chosen);
+        return Reflect.getOwnPropertyDescriptor(array, key);
+      }
+    });
+    await assert.rejects(verifyManifestSources(manifest, chosen), /selection changed/);
+    assert.equal(chosen.has('a'), false);
+  }
+});
