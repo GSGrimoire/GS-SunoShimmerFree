@@ -261,6 +261,45 @@ await (async()=>{
 })();
 await (async()=>{
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+  class VariableOutputDecoder extends FakeDecoder {
+    targets=[];
+    async flush(){
+      let begin=0;
+      for(const [i,length] of [576,1152,576,1152].entries()) {
+        this.callbacks.output({sampleRate:44100,numberOfChannels:2,numberOfFrames:length,
+          timestamp:Math.round(begin*1000000/44100),
+          copyTo:(out,{planeIndex})=>{
+            this.targets.push(out);
+            // A short callback writes only its own frames, leaving scratch tail untouched.
+            out.fill((i+1)*.125*(planeIndex===0?1:-1),0,length);
+          },close(){}});
+        begin+=length;
+      }
+    }
+  }
+  const root={AudioDecoder:VariableOutputDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:root,Uint8Array,Float32Array,ArrayBuffer,Array,Number,Math,Promise,setTimeout});
+  const source=await root.SunoStemMp3.openSource(bytes);
+  const out=await source.decode(1,2901), seen=VariableOutputDecoder.instances.at(-1).targets;
+  assert.deepEqual(seen.map(plane=>plane.length),[576,576,1152,1152,1152,1152,1152,1152]);
+  assert.notEqual(seen[0],seen[2],'scratch grows for a larger callback');
+  assert(seen.slice(2).every(plane=>plane===seen[2]),'reuse grown scratch in subsequent callbacks');
+  const expected=Float32Array.from({length:2900},(_,i)=>{
+    const frame=i+1;
+    return frame<576?.125:frame<1728?.25:frame<2304?.375:.5;
+  });
+  assert.deepEqual(out.channels[0],expected);
+  assert.deepEqual(out.channels[1],expected.map(x=>-x));
+  const preview=await root.SunoStemMp3.decodePassage(bytes,1/44100,2901/44100);
+  const previewPlanes=VariableOutputDecoder.instances.at(-1).targets;
+  assert.deepEqual(previewPlanes.map(plane=>plane.length),[576,576,1152,1152,576,576,1152,1152]);
+  assert.notEqual(previewPlanes[2],previewPlanes[6],'excerpt playback retains per-callback storage');
+  assert.deepEqual(preview.channels,out.channels);
+  console.log('Overview PCM scratch reuse preserves variable callback samples and excerpt output.');
+})();
+await (async()=>{
+  const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
   const root={AudioDecoder:FakeDecoder,EncodedAudioChunk:FakeChunk};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
     {self:root,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});

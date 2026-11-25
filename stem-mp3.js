@@ -235,11 +235,11 @@
         finally { busy=false; }
       }});
   }
-  async function decodeIndexed(bytes,index,start,end,frames,plan,config,signal,useDequeue) {
+  async function decodeIndexed(bytes,index,start,end,frames,plan,config,signal,forOverview) {
     ensureActive(signal);
     var first=index;
     var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
-    var decoder, failure=null, count=0, wakeQueue=null;
+    var decoder, failure=null, count=0, wakeQueue=null, scratch=null;
     var firstAllowed=plan.feedStart*1152, latestFirst=plan.keepFrame*1152;
     var observedFrames=0, lastEnd=0;
     function active() { if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.'); }
@@ -298,16 +298,21 @@
         observedFrames++;lastEnd=begin+length;
         var from=Math.max(start,begin), to=Math.min(end,begin+length);
         if (to>from) {
-          var temporary=new Float32Array(length);
+          var temporary;
+          if (forOverview) {
+            if (!scratch || scratch.length<length) scratch=new Float32Array(length);
+            temporary=scratch;
+          } else temporary=new Float32Array(length);
           for (var c=0;c<channels.length;c++) {
             audio.copyTo(temporary,{planeIndex:c,format:'f32-planar'});
+            // Only copy frames from this callback, even when scratch is larger.
             channels[c].set(temporary.subarray(from-begin,to-begin),from-start);
           }
         }
       } catch(err) { fail(err); } finally { audio.close(); }
     }
     decoder=new root.AudioDecoder({output:output,error:fail});
-    var canWaitForDequeue=useDequeue && typeof decoder.addEventListener==='function' &&
+    var canWaitForDequeue=forOverview && typeof decoder.addEventListener==='function' &&
       typeof decoder.removeEventListener==='function';
     var abort=function(){try{decoder.close();}catch(_){}};
     if (signal) signal.addEventListener('abort',abort,{once:true});
