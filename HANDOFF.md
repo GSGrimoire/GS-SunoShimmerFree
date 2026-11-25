@@ -18,7 +18,7 @@ The eventual product is an automated, local-first, reversible multitrack studio.
 3. Correct #47 against current #46, then obtain **one Full independent review** of the actual integration tip with dependencies.
 4. A named browser-capable operator or **owner Gus as fallback** records real-browser hostile ZIP, timing, peak-memory, cancellation, network, float-WAV parity and level-matched Viking 462–474-second listening results. GitHub-only sessions cannot claim this passed.
 
-No new coder PR while at least two coder PRs await review; freeze new `studio-*` kernels until A ships. Claims and review verdicts are immutable-head scoped. Preserve stack history with merge commits only when independently approved and ordinarily authorized. Do not merge, publish or change production `main` on a deadline.
+Owner decision, 25 November 2026: no numerical cap on outstanding implementation pull requests. Keep one active writer per branch, one explicit scoped claim per session, and check dependencies, existing implementations and collisions before starting. The historical standalone-kernel freeze applied until A shipped (beta shipped 23 November); prefer canonical integration over duplicate kernels. Claims and review verdicts are immutable-head scoped. Preserve stack history with merge commits only when independently approved and ordinarily authorized. Do not merge, publish or change production `main` on a deadline.
 
 ## Next-session record
 Use the relevant PR and issue #18 for live status: actor/session, claim and lease, branch/base/head, changes, exact test commands and results, unresolved gates, and next reviewer/operator action. Automation schedules and identifiers are external live state, never evidence of successful execution.
