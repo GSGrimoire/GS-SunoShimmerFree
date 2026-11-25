@@ -15,7 +15,7 @@ Prefer **two separate ChatGPT sessions**, not a single session which says it swi
 
 ## Scheduling, capacity and claims
 
-Schedulers trigger sessions but do not prove coding, reviews, or release. Check actual automation state outside this repository; record any live configuration and claims in issue #18, never hard-code automation IDs or current head SHAs here. Do not silently reuse portfolio automations or claim unsupported cadence. The coder opens **no new pull request while two or more of its pull requests await review**. Freeze new standalone `studio-*` kernel branches/pull requests until A ships. Use existing integration branches, one writer per branch, scoped claim and lease, and re-fetch branch head immediately before committing. Stop on collision.
+Schedulers trigger sessions but do not prove coding, reviews, or release. Check actual automation state outside this repository; record any live configuration and claims in issue #18, never hard-code automation IDs or current head SHAs here. Do not silently reuse portfolio automations or claim unsupported cadence. Owner decision (25 November 2026): **no numerical cap on outstanding implementation pull requests**. This does not authorize concurrent writers on a branch or overlapping tasks. Each coder session claims one bounded task and branch; inspect open diffs, current claims, dependencies and ancestry before starting. Prefer existing integration branches and canonical contracts. The historical standalone `studio-*` freeze applied until A shipped (beta shipped 23 November). Use one writer per branch, scoped claim and lease, and re-fetch branch head immediately before committing. Stop on collision. Independent review before integration remains mandatory for all implementation changes.
 
 ## State machine and handoff contract
 
@@ -44,7 +44,7 @@ Schedulers trigger sessions but do not prove coding, reviews, or release. Check 
 
 Adopt the risk-sensitive GS Tools review framework but honor stricter SSF-specific gates.
 
-**Mini review:** isolated text, styling or deterministic calculations without safety boundary or audio integrity impact; documented self-review and appropriate tests suffice unless the owner explicitly requires a second reviewer.
+**Mini review:** isolated text, styling or deterministic calculations without safety boundary or audio integrity impact; documented self-review and appropriate tests are preparatory evidence; independent review before integration is still required.
 
 **Full review:** any ZIP/media parser security, source-file integrity, decoding, streaming memory, audio alignment, export correctness, asynchronous concurrency, automation that can remove music, local project persistence, credentials, public deployment or material uncertainty. **Independent reviewer required.**
 
