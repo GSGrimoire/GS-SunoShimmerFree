@@ -89,6 +89,7 @@
   // Additional two-frame warm-up covers synthesis overlap; it does not
   // replace dependency validation. The decode admission cap fails closed.
   var SEEK_MARGIN_FRAMES=2, GUARD_FRAMES=2, MAX_SEEK_FEED_FRAMES=4096;
+  var DECODE_BATCH_FRAMES=16, DECODE_QUEUE_LOW_WATER=8;
   function planSeek(index, startFrame, endFrame) {
     var frames=index.frames;
     if (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame) ||
@@ -230,18 +231,49 @@
         if (busy) throw new Error('MP3 source is already decoding a passage.');
         var frames=checkPassage(start,end,index.channels), plan=planSeek(index,start,end);
         busy=true;
-        try { return await decodeIndexed(bytes,index,start,end,frames,plan,config,decodeSignal); }
+        try { return await decodeIndexed(bytes,index,start,end,frames,plan,config,decodeSignal,true); }
         finally { busy=false; }
       }});
   }
-  async function decodeIndexed(bytes,index,start,end,frames,plan,config,signal) {
+  async function decodeIndexed(bytes,index,start,end,frames,plan,config,signal,useDequeue) {
     ensureActive(signal);
     var first=index;
     var channels=Array.from({length:first.channels},function(){return new Float32Array(frames);});
-    var decoder, failure=null, count=0;
+    var decoder, failure=null, count=0, wakeQueue=null;
     var firstAllowed=plan.feedStart*1152, latestFirst=plan.keepFrame*1152;
     var observedFrames=0, lastEnd=0;
     function active() { if (signal && signal.aborted) throw new Error('MP3 decoding cancelled.'); }
+    function fail(err) {
+      failure=err;
+      if (wakeQueue) wakeQueue();
+    }
+    function waitForDequeue() {
+      return new Promise(function(resolve,reject) {
+        var settled=false;
+        function finish() {
+          if (settled) return;
+          settled=true;
+          wakeQueue=null;
+          clearTimeout(timer);
+          decoder.removeEventListener('dequeue',onDequeue);
+          if (signal) signal.removeEventListener('abort',finish);
+          if (signal && signal.aborted) reject(new Error('MP3 decoding cancelled.'));
+          else if (failure) reject(failure);
+          else resolve();
+        }
+        function onDequeue() {
+          if (decoder.decodeQueueSize<=DECODE_QUEUE_LOW_WATER) finish();
+        }
+        wakeQueue=finish;
+        decoder.addEventListener('dequeue',onDequeue);
+        if (signal) signal.addEventListener('abort',finish,{once:true});
+        // Tolerate implementations that coalesce or omit queue notifications.
+        // The caller rechecks pressure after any wake, including the fallback.
+        var timer=setTimeout(finish,25);
+        if (failure || (signal && signal.aborted)) finish();
+        else onDequeue();
+      });
+    }
     function output(audio) {
       try {
         active();
@@ -272,9 +304,11 @@
             channels[c].set(temporary.subarray(from-begin,to-begin),from-start);
           }
         }
-      } catch(err) { failure=err; } finally { audio.close(); }
+      } catch(err) { fail(err); } finally { audio.close(); }
     }
-    decoder=new root.AudioDecoder({output:output,error:function(err){failure=err;}});
+    decoder=new root.AudioDecoder({output:output,error:fail});
+    var canWaitForDequeue=useDequeue && typeof decoder.addEventListener==='function' &&
+      typeof decoder.removeEventListener==='function';
     var abort=function(){try{decoder.close();}catch(_){}};
     if (signal) signal.addEventListener('abort',abort,{once:true});
     try {
@@ -290,10 +324,11 @@
         count++;
         // Drain the decoder without flush() until the end. Repeated flushes
         // reset MP3 bit-reservoir state and can corrupt inter-frame audio.
-        if (count===16) {
-          while (decoder.decodeQueueSize>8) {
+        if (count===DECODE_BATCH_FRAMES) {
+          while (decoder.decodeQueueSize>DECODE_QUEUE_LOW_WATER) {
             active();if(failure)throw failure;
-            await new Promise(function(resolve){setTimeout(resolve,0);});
+            if (canWaitForDequeue) await waitForDequeue();
+            else await new Promise(function(resolve){setTimeout(resolve,0);});
           }
           count=0;
         }

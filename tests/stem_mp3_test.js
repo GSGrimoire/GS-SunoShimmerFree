@@ -179,6 +179,88 @@ await (async()=>{
 })();
 await (async()=>{
   const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+  const timerDelays=[],timers=new Map();let nextTimer=0;
+  class EventDecoder extends FakeDecoder {
+    listeners=new Set();
+    addEventListener(type,fn){if(type==='dequeue') this.listeners.add(fn);}
+    removeEventListener(type,fn){if(type==='dequeue') this.listeners.delete(fn);}
+    decode(chunk){super.decode(chunk);this.decodeQueueSize++;}
+    drain(emit){
+      this.decodeQueueSize=8;
+      if(emit) for(const fn of [...this.listeners]) fn();
+    }
+  }
+  const root={AudioDecoder:EventDecoder,EncodedAudioChunk:FakeChunk};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
+    {self:root,Uint8Array,Float32Array,ArrayBuffer,Array,Number,Math,Promise,
+      setTimeout(fn,ms){timerDelays.push(ms);const id=++nextTimer;timers.set(id,fn);return id;},
+      clearTimeout(id){timers.delete(id);}});
+  const source=await root.SunoStemMp3.openSource(bytes);
+  const end=16*1152;
+  function queued(pending,expectedListeners=1) {
+    const decoder=EventDecoder.instances.at(-1);
+    assert.equal(decoder.decoded.length,16,'high queue watermark must hold');
+    assert.equal(decoder.listeners.size,expectedListeners);
+    assert.equal(timers.size,1,'waiting must schedule a fallback timer');
+    return {pending,decoder};
+  }
+  async function settle(promise) {
+    let timer;
+    try {
+      return await Promise.race([promise,new Promise((_,reject)=>{
+        timer=setTimeout(()=>reject(new Error('queue wait did not settle')),250);
+      })]);
+    } finally { clearTimeout(timer); }
+  }
+
+  let {pending,decoder}=queued(source.decode(0,end));
+  assert(timerDelays.at(-1)>0,'native notification should beat the fallback');
+  decoder.decodeQueueSize=9;
+  for(const fn of [...decoder.listeners]) fn();
+  assert.equal(decoder.listeners.size,1,'partial drain must keep waiting at the same watermark');
+  assert.equal(timers.size,1);
+  decoder.drain(true);
+  assert.equal((await settle(pending)).channels[0].length,end);
+  assert.equal(timers.size,0,'event wake must cancel its fallback');
+  assert.equal(decoder.listeners.size,0);
+  assert.equal(decoder.flushes,1);
+
+  ({pending,decoder}=queued(source.decode(0,end)));
+  decoder.drain(false);
+  const [fallbackId,fallback]=timers.entries().next().value;
+  timers.delete(fallbackId);fallback();
+  assert.equal((await settle(pending)).channels[0].length,end,'missed events fall back to polling');
+  assert.equal(decoder.listeners.size,0);
+
+  const controller=new AbortController();
+  ({pending,decoder}=queued(source.decode(0,end,controller.signal)));
+  controller.abort();
+  await assert.rejects(settle(pending),/MP3 decoding cancelled/);
+  assert.equal(decoder.listeners.size,0);
+  assert.equal(timers.size,0);
+  assert(decoder.closed);
+  decoder.drain(true);
+  assert.equal(decoder.decoded.length,16,'late notification must not resume a cancelled decode');
+
+  ({pending,decoder}=queued(source.decode(0,end)));
+  decoder.callbacks.error(new Error('decoder stopped while queue was full'));
+  await assert.rejects(settle(pending),/decoder stopped while queue was full/);
+  assert.equal(decoder.listeners.size,0);
+  assert.equal(timers.size,0);
+  assert(decoder.closed);
+
+  pending=root.SunoStemMp3.decodePassage(bytes,0,end/44100);
+  for(let i=0;i<20&&!timers.size;i++) await Promise.resolve();
+  ({decoder}=queued(pending,0));
+  assert.equal(timerDelays.at(-1),0,'production excerpt retains its original timer wait');
+  decoder.drain(false);
+  const [previewId,previewPoll]=timers.entries().next().value;
+  timers.delete(previewId);previewPoll();
+  assert.equal((await settle(pending)).channels[0].length,end);
+  console.log('Overview dequeue wake, polling fallback, abort, errors and production queue behavior passed.');
+})();
+await (async()=>{
+  const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
   const root={AudioDecoder:FakeDecoder,EncodedAudioChunk:FakeChunk};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../stem-mp3.js'),'utf8'),
     {self:root,Uint8Array,Float32Array,Array,Number,Math,Promise,setTimeout});
