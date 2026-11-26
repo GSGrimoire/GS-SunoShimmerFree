@@ -1,5 +1,9 @@
 # SunoShimmerFree agent instructions
 
+## Shared engineering policy
+
+Read the current [GS Tools Hub AGENTS.md](https://github.com/GSGrimoire/gs-tools-hub/blob/main/AGENTS.md) before implementation, review, integration or release. Follow its linked specialist guidance and retain local technical constraints, required checks and stricter gates. If the private Hub is inaccessible or its new policy has not landed, retain existing safeguards and defer actions depending on unverified authority. Owner-approved consolidation: [Hub #4](https://github.com/GSGrimoire/gs-tools-hub/issues/4); central documentation: [Hub #69](https://github.com/GSGrimoire/gs-tools-hub/pull/69). No change to workflow triggers, protection, access or release authority.
+
 Mandatory entrypoint for agents in **GSGrimoire/GS-SunoShimmerFree**. These instructions do not schedule or authorize autonomous activity.
 
 ## First read and authority
@@ -23,3 +27,5 @@ A **named browser-capable reviewer/session**, or **owner Gus as fallback**, exec
 
 ## Handoff
 Record role, exact repository/branch/base/head, claim, changed files, executed tests with outcomes, unresolved risks, and next reviewer/operator action in the relevant pull request and issue #18. No source-only review constitutes a release.
+
+Never claim a scheduler, approval, merger, deployed studio or release gate exists or passed without direct evidence.
