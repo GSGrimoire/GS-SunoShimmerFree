@@ -34,7 +34,7 @@
     box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'stemHeading');
     box.innerHTML = [
       '<div class="stem-panel">',
-      '<header class="stem-head"><div><h2 id="stemHeading">Suno stems <span class="stem-beta">beta</span></h2><p>Preview and export a passage of up to 240 seconds. Waveforms and whole-song mixing come next.</p></div>',
+      '<header class="stem-head"><div><h2 id="stemHeading">Suno stems <span class="stem-beta">beta</span></h2><p>Preview and export a passage of up to 240 seconds for supported WAV stems. MP3 indexed decoding has a shorter limit: select 90 seconds or less to start. Waveforms and whole-song mixing come next.</p></div>',
       '<div class="stem-head-buttons"><button id="stemNew" type="button">Choose another ZIP</button>',
       '<input id="stemNewFile" type="file" accept=".zip,application/zip" hidden>',
       '<button id="stemClose" type="button" aria-label="Close stem workspace">Close</button></div></header>',
@@ -63,7 +63,7 @@
       '<button type="button" id="stemExport">Export previewed mix or stem</button></div>',
       '<p class="stem-note">Individual preview and export use the selected stem controls. A compiled mix sums enabled unmuted stems; Solo overrides Enable but not Mute.',
       ' Processing is sequential and can take time. A compiled mix is limited to 96 MiB. For long tracks, set a short preview passage first.',
-      ' MP3 preview requires a finite excerpt and supported WebCodecs. Only the selected passage is decoded, using indexed seeking with bit-reservoir pre-roll; seek parity is checked offline against FFmpeg, not yet verified in each browser.',
+      ' MP3 indexed previews may be limited to less than 98 seconds by frame pre-roll; start with 90 seconds or less and shorten if refused. WAV passages may reach 240 seconds when memory permits. MP3 preview requires a finite excerpt and supported WebCodecs. Only the selected passage is decoded, using indexed seeking with bit-reservoir pre-roll; seek parity is checked offline against FFmpeg, not yet verified in each browser.',
       ' MP3 timing follows the decoder output timeline: encoder delay is not removed, identically for every MP3 stem.',
       ' The entire compressed ZIP entry may be materialized before decoding. Native decoder memory is not measured. Mixed WAV/MP3 stems are blocked until alignment is verified.</p>',
       '</div>'
@@ -647,6 +647,8 @@
           // any decode; report it as a range problem, not a memory problem.
           if (err && err.code === 'PASSAGE_TOO_SHORT')
             throw new Error('Preview range is shorter than one audio sample at this rate. Choose a longer interval.');
+          if (err && /MP3 indexed passage exceeds the bounded decode budget/.test(err.message || ''))
+            throw new Error('MP3 indexed decoder cannot admit this passage. Choose a shorter excerpt (start with 90 seconds or less); frame pre-roll can reduce the available duration.');
           if (!err || err.code !== 'PASSAGE_OUT_OF_RANGE') throw err;
           var secs=Number.isFinite(err.sourceSeconds) ? ' (' + err.sourceSeconds.toFixed(2) + ' seconds)' : '';
           throw new Error(rate ? 'Preview passage is outside the duration of ' + s.name + secs + '.'
