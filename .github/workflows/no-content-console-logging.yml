@@ -1,0 +1,27 @@
+name: No content console logging
+on:
+  pull_request:
+    paths:
+      - 'app.js'
+      - 'engine.js'
+      - 'edit.js'
+      - 'index.html'
+      - 'tests/security/no-content-console-logging.test.cjs'
+      - '.github/workflows/no-content-console-logging.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  static-log-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/security/no-content-console-logging.test.cjs
